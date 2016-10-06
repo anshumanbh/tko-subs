@@ -10,7 +10,7 @@ Needless to mention, please use this tool very very carefully. Run it only if yo
 
 ### Demo
 
-![Demo](/imgs/out.gif)
+![Demo](/imgs/in2.gif)
 
 
 ### Pre-requisites
