@@ -1,4 +1,4 @@
-TheBoredEngpackage main
+package main
 
 import (
 	"bufio"
