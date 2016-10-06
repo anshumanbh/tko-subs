@@ -47,3 +47,7 @@ This will iterate over all the domains in the `subdomains.txt` file and:
 ### Future Work
 
 I am planning to make this more generalized by including different usecases like Heroku, S3, Shopify, etc. 
+
+
+### Credits
+Thanks to Luke Young (@TheBoredEng) for helping me out with the go-github library

