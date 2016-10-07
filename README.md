@@ -11,6 +11,8 @@ This tool will also tell you potential takeovers for certain CMS websites for wh
 * Tumblr
 * Shopify 
 
+PS - This project is a work in progress. I will be adding more CMS websites, also will try to automate takeover as much as I can. 
+
 
 ### Disclaimer: DONT BE A JERK! 
 
@@ -54,6 +56,8 @@ This will iterate over all the domains in the `subdomains.txt` file and:
 	* Create a repo
 	* Create a branch `gh-pages` in that repo
 	* Upload `CNAME` and `index.html` to the `gh-pages` branch in that repo. Here, `CNAME` contains the domain that needs to be taken over. `index.html` contains the text `This domain is temporarily suspended` that is to be displayed once the domain is taken over. 
+* Similarly, for Heroku apps, the code will:
+	* Add the dangling domain to your Heroku app (whose name you will be providing in the .env file)
 * And, that's it! 
 
 
