@@ -54,11 +54,8 @@ func IsReachable(domain string) string {
 	return <-ch
 }
 
-func CNAMECheck(domain string) string {
+func CNAMECheck(domain string) (bool, string) {
 	cname, _ := net.LookupCNAME(domain)
-	if !cname {
-		return false
-	}
 
 	isgithub, _ := regexp.MatchString("github.io", cname)
 	isheroku, _ := regexp.MatchString("herokuapp.com", cname)
@@ -112,6 +109,11 @@ func CNAMECheck(domain string) string {
 }
 
 func check(domain string) string {
+	known, provider := CNAMECheck(domain)
+	if !known {
+		return domain + " Found an unknown/no CNAME: " + provider
+	}
+
 	tr := &http.Transport{
 		Dial: (&net.Dialer{
 			Timeout: 5 * time.Second,
@@ -126,7 +128,7 @@ func check(domain string) string {
 		Timeout:   timeout,
 	}
 
-	istumblr, _ := regexp.MatchString("tumblr", string(domain))
+	istumblr := provider == "tumblr"
 
 	response, err := client.Get("https://" + domain)
 	if err != nil {
@@ -150,40 +152,37 @@ func check(domain string) string {
 		return "Trouble reading response"
 	}
 
-	cantakeovermatchgithub1, _ := regexp.MatchString("There isn't a GitHub Pages site here.", string(text))
-	cantakeovermatchgithub2, _ := regexp.MatchString("For root URLs (like http://example.com/) you must provide an index.html file", string(text))
-	cantakeovermatchheroku, _ := regexp.MatchString("Heroku | No such app", string(text))
-	cantakeovermatchunbounce, _ := regexp.MatchString("The requested URL / was not found on this server.", string(text))
-	cantakeovermatchtumblr, _ := regexp.MatchString("There's nothing here.", string(text))
-	cantakeovermatchshopify1, _ := regexp.MatchString("Only one step left!", string(text))
-	cantakeovermatchshopify2, _ := regexp.MatchString("Sorry, this shop is currently unavailable.", string(text))
-
-	//TODO: change this to switch statements
-	if cantakeovermatchgithub1 {
-		fmt.Println("")
-		return githubcreate(domain)
-	} else if cantakeovermatchgithub2 {
-		fmt.Println("")
-		return githubcreate(domain)
-	} else if cantakeovermatchheroku {
-		fmt.Println("")
-		return herokucreate(domain)
-	} else if cantakeovermatchunbounce {
-		fmt.Println("")
-		return unbouncecreate(domain)
-	} else if cantakeovermatchtumblr {
-		fmt.Println("")
-		return tumblrcreate(domain)
-	} else if cantakeovermatchshopify1 {
-		fmt.Println("")
-		return shopifycreate(domain)
-	} else if cantakeovermatchshopify2 {
-		fmt.Println("")
-		return shopifycreate(domain)
-	} else {
-		fmt.Println("")
-		return domain + " Not found as dangling for any of the common content hosting websites"
+	switch provider {
+	case "github":
+		cantakeover1, _ := regexp.MatchString("There isn't a GitHub Pages site here.", string(text))
+		cantakeover2, _ := regexp.MatchString("For root URLs (like http://example.com/) you must provide an index.html file", string(text))
+		if cantakeover1 || cantakeover2 {
+			return githubcreate(domain)
+		}
+	case "heroku":
+		cantakeover, _ := regexp.MatchString("Heroku | No such app", string(text))
+		if cantakeover {
+			return herokucreate(domain)
+		}
+	case "unbounce":
+		cantakeover, _ := regexp.MatchString("The requested URL / was not found on this server.", string(text))
+		if cantakeover {
+			return unbouncecreate(domain)
+		}
+	case "tumblr":
+		cantakeover, _ := regexp.MatchString("There's nothing here.", string(text))
+		if cantakeover {
+			return tumblrcreate(domain)
+		}
+	case "shopify":
+		cantakeover1, _ := regexp.MatchString("Only one step left!", string(text))
+		cantakeover2, _ := regexp.MatchString("Sorry, this shop is currently unavailable.", string(text))
+		if cantakeover1 || cantakeover2 {
+			return shopifycreate(domain)
+		}
 	}
+	return domain + " Not found as dangling for any of the common content hosting websites"
+	// TODO: Add the rest of the providers
 }
 
 func githubcreate(domain string) string {
