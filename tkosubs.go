@@ -54,6 +54,63 @@ func IsReachable(domain string) string {
 	return <-ch
 }
 
+func CNAMECheck(domain string) string {
+	cname, _ := net.LookupCNAME(domain)
+	if !cname {
+		return false
+	}
+
+	isgithub, _ := regexp.MatchString("github.io", cname)
+	isheroku, _ := regexp.MatchString("herokuapp.com", cname)
+	istumblr, _ := regexp.MatchString("tumblr.com", cname)
+	isshopify, _ := regexp.MatchString("myshopify.com", cname)
+	isunbounce, _ := regexp.MatchString("unbouncepages.com", cname)
+	isinstapage, _ := regexp.MatchString("pageserve.co", cname)
+	isdesk, _ := regexp.MatchString("desk.com", cname)
+	istictail, _ := regexp.MatchString("tictail.com", cname)
+	iscampaignmonitor, _ := regexp.MatchString("createsend.com", cname)
+	iscargocollective, _ := regexp.MatchString("cargocollective.com", cname)
+	isstatuspage, _ := regexp.MatchString("statuspage.io", cname)
+	isamazonaws, _ := regexp.MatchString("amazonaws.com", cname)
+	iscloudfront, _ := regexp.MatchString("cloudfront.net", cname)
+	ishubspot, _ := regexp.MatchString("hubspot.net", cname)
+	issquarespace, _ := regexp.MatchString("squarespace.com", cname)
+
+	switch {
+	case isgithub:
+		return true, "github"
+	case isheroku:
+		return true, "heroku"
+	case istumblr:
+		return true, "tumblr"
+	case isshopify:
+		return true, "shopify"
+	case isunbounce:
+		return true, "unbounce"
+	case isinstapage:
+		return true, "instapage"
+	case isdesk:
+		return true, "desk"
+	case istictail:
+		return true, "tictail"
+	case iscampaignmonitor:
+		return true, "campaignmonitor"
+	case iscargocollective:
+		return true, "cargocollective"
+	case isstatuspage:
+		return true, "statuspage"
+	case isamazonaws:
+		return true, "amazonaws"
+	case iscloudfront:
+		return true, "cloudfront"
+	case ishubspot:
+		return true, "hubspot"
+	case issquarespace:
+		return true, "squarespace"
+	}
+	return false, cname
+}
+
 func check(domain string) string {
 	tr := &http.Transport{
 		Dial: (&net.Dialer{
