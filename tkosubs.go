@@ -3,7 +3,9 @@ package main
 import (
 	"bufio"
 	"crypto/tls"
+	"encoding/csv"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -22,31 +24,36 @@ func main() {
 
 	gotenv.Load()
 
-	filepath := os.Args[1]
-
-	f, err := os.Open(filepath)
-
+	domainsFilePath := os.Args[1]
+	domainsFile, err := os.Open(domainsFilePath)
 	if err != nil {
 		log.Fatalln(err)
 	}
+	defer domainsFile.Close()
+	domainsScanner := bufio.NewScanner(domainsFile)
 
-	defer f.Close()
+	recordsFilePath := os.Args[2]
+	recordsFile, err := os.Open(recordsFilePath)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	defer recordsFile.Close()
+	recordsReader := bufio.NewReader(recordsFile)
+	records := csv.NewReader(recordsReader)
 
-	scanner := bufio.NewScanner(f)
+	for domainsScanner.Scan() {
+		domain := domainsScanner.Text()
 
-	for scanner.Scan() {
-		domain := scanner.Text()
-
-		fmt.Println(IsReachable(domain))
+		fmt.Println(IsReachable(domain, records))
 	}
 
 }
 
-func IsReachable(domain string) string {
+func IsReachable(domain string, records *csv.Reader) string {
 	ch := make(chan string, 1)
 	go func() {
 		select {
-		case ch <- check(domain):
+		case ch <- check(domain, records):
 		case <-time.After(5 * time.Second):
 			ch <- "timedout"
 		}
@@ -54,135 +61,69 @@ func IsReachable(domain string) string {
 	return <-ch
 }
 
-func CNAMECheck(domain string) (bool, string) {
+func check(domain string, records *csv.Reader) string {
 	cname, _ := net.LookupCNAME(domain)
-
-	isgithub, _ := regexp.MatchString("github.io", cname)
-	isheroku, _ := regexp.MatchString("herokuapp.com", cname)
-	istumblr, _ := regexp.MatchString("tumblr.com", cname)
-	isshopify, _ := regexp.MatchString("myshopify.com", cname)
-	isunbounce, _ := regexp.MatchString("unbouncepages.com", cname)
-	isinstapage, _ := regexp.MatchString("pageserve.co", cname)
-	isdesk, _ := regexp.MatchString("desk.com", cname)
-	istictail, _ := regexp.MatchString("tictail.com", cname)
-	iscampaignmonitor, _ := regexp.MatchString("createsend.com", cname)
-	iscargocollective, _ := regexp.MatchString("cargocollective.com", cname)
-	isstatuspage, _ := regexp.MatchString("statuspage.io", cname)
-	isamazonaws, _ := regexp.MatchString("amazonaws.com", cname)
-	iscloudfront, _ := regexp.MatchString("cloudfront.net", cname)
-	ishubspot, _ := regexp.MatchString("hubspot.net", cname)
-	issquarespace, _ := regexp.MatchString("squarespace.com", cname)
-
-	switch {
-	case isgithub:
-		return true, "github"
-	case isheroku:
-		return true, "heroku"
-	case istumblr:
-		return true, "tumblr"
-	case isshopify:
-		return true, "shopify"
-	case isunbounce:
-		return true, "unbounce"
-	case isinstapage:
-		return true, "instapage"
-	case isdesk:
-		return true, "desk"
-	case istictail:
-		return true, "tictail"
-	case iscampaignmonitor:
-		return true, "campaignmonitor"
-	case iscargocollective:
-		return true, "cargocollective"
-	case isstatuspage:
-		return true, "statuspage"
-	case isamazonaws:
-		return true, "amazonaws"
-	case iscloudfront:
-		return true, "cloudfront"
-	case ishubspot:
-		return true, "hubspot"
-	case issquarespace:
-		return true, "squarespace"
-	}
-	return false, cname
-}
-
-func check(domain string) string {
-	known, provider := CNAMECheck(domain)
-	if !known {
-		return domain + " Found an unknown/no CNAME: " + provider
-	}
-
-	tr := &http.Transport{
-		Dial: (&net.Dialer{
-			Timeout: 5 * time.Second,
-		}).Dial,
-		TLSHandshakeTimeout: 5 * time.Second,
-		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
-	}
-
-	timeout := time.Duration(5 * time.Second)
-	client := &http.Client{
-		Transport: tr,
-		Timeout:   timeout,
-	}
-
-	istumblr := provider == "tumblr"
-
-	response, err := client.Get("https://" + domain)
-	if err != nil {
-		fmt.Println("")
-		return "Can't reach the domain " + domain
-	}
-
-	// check if its a tumblr blog page since tumblr deals differently with http vs https
-	// If its tumblr, send the request over http vs https
-	if istumblr {
-		response, err = client.Get("http://" + domain)
-		if err != nil {
-			fmt.Println("")
-			return "Can't reach the domain " + domain
+	for {
+		record, err := records.Read()
+		if err == io.EOF {
+			break
 		}
-	}
+		provider_name := record[0]  // The name of the provider
+		provider_cname := record[1] // The CNAME used by the provider
+		provider_error := record[2] // The error message that's returned for an unclaimed domain
+		provider_http := record[3]  // Access through http not https (true or false)
 
-	text, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		log.Fatal(err)
-		return "Trouble reading response"
-	}
+		usesprovider, _ := regexp.MatchString(provider_cname, cname)
+		if usesprovider {
+			tr := &http.Transport{
+				Dial: (&net.Dialer{
+					Timeout: 5 * time.Second,
+				}).Dial,
+				TLSHandshakeTimeout: 5 * time.Second,
+				TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+			}
 
-	switch provider {
-	case "github":
-		cantakeover1, _ := regexp.MatchString("There isn't a GitHub Pages site here.", string(text))
-		cantakeover2, _ := regexp.MatchString("For root URLs (like http://example.com/) you must provide an index.html file", string(text))
-		if cantakeover1 || cantakeover2 {
-			return githubcreate(domain)
-		}
-	case "heroku":
-		cantakeover, _ := regexp.MatchString("Heroku | No such app", string(text))
-		if cantakeover {
-			return herokucreate(domain)
-		}
-	case "unbounce":
-		cantakeover, _ := regexp.MatchString("The requested URL / was not found on this server.", string(text))
-		if cantakeover {
-			return unbouncecreate(domain)
-		}
-	case "tumblr":
-		cantakeover, _ := regexp.MatchString("There's nothing here.", string(text))
-		if cantakeover {
-			return tumblrcreate(domain)
-		}
-	case "shopify":
-		cantakeover1, _ := regexp.MatchString("Only one step left!", string(text))
-		cantakeover2, _ := regexp.MatchString("Sorry, this shop is currently unavailable.", string(text))
-		if cantakeover1 || cantakeover2 {
-			return shopifycreate(domain)
+			timeout := time.Duration(5 * time.Second)
+			client := &http.Client{
+				Transport: tr,
+				Timeout:   timeout,
+			}
+
+			protocol := "https://"
+			if provider_http == "true" {
+				protocol = "http://"
+			}
+
+			response, err := client.Get(protocol + domain)
+			if err != nil {
+				fmt.Println("")
+				return "Can't reach the domain " + domain
+			}
+
+			text, err := ioutil.ReadAll(response.Body)
+			if err != nil {
+				log.Fatal(err)
+				return "Trouble reading response"
+			}
+
+			cantakeover, _ := regexp.MatchString(provider_error, string(text))
+			if cantakeover {
+				return takeover(domain, provider_name)
+			}
 		}
 	}
 	return domain + " Not found as dangling for any of the common content hosting websites"
-	// TODO: Add the rest of the providers
+}
+
+func takeover(domain string, provider string) string {
+	switch provider {
+	case "github":
+		return githubcreate(domain)
+	case "heroku":
+		return herokucreate(domain)
+	}
+	fmt.Printf("Found: Misconfigured %s website at %s", provider, domain)
+	return "This can potentially be taken over. Unfortunately, the tool does not support taking over" + provider + "websites at the moment."
 }
 
 func githubcreate(domain string) string {
@@ -281,21 +222,4 @@ func herokucreate(domain string) string {
 	client.DomainCreate(os.Getenv("herokuappname"), domain)
 
 	return "Please check " + domain + " after a few minutes to ensure that it has been taken over.."
-}
-
-func unbouncecreate(domain string) string {
-	fmt.Println("Found: Misconfigured Unbounce landing page at " + domain)
-	return "This can potentially be taken over. Unfortunately, the tool does not support taking over Unbounce pages at the moment."
-}
-
-func tumblrcreate(domain string) string {
-	fmt.Println("Found: Misconfigured Tumblr Blog at " + domain)
-	return "This can potentially be taken over. Unfortunately, the tool does not support taking over Tumblr blogs at the moment."
-}
-
-func shopifycreate(domain string) string {
-	fmt.Println("Found: Misconfigured Shopify shop at " + domain)
-	return "This can potentially be taken over. Unfortunately, the tool does not support taking over Shopify shops at the moment."
-	// This can be done 2 ways. If only 1 step left, then maybe just adding the domain to your shop would work
-	// If shop currently unavailable at the domain, then maybe creating a shop and then adding that domain should work
 }
