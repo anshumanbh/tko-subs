@@ -1,0 +1,16 @@
+github,github.io,There isn't a GitHub Pages site here.,false
+github,github.io,For root URLs (like http://example.com/) you must provide an index.html file,false
+heroku,herokuapp.com,Heroku | No such app,false
+unbounce,unbouncepages.com,The requested URL / was not found on this server.,false
+tumblr,tumblr.com,There's nothing here.,true
+shopify,myshopify.com,Only one step left!,false
+shopify,myshopify.com,"Sorry, this shop is currently unavailable.",false
+instapage,pageserve.co,You've Discovered A Missing Link. Our Apologies!,false
+desk,desk.com,Please try again or try Desk.com free for 14 days.,false
+tictail,Building a brand of your own?,tictail.com,true
+campaignmonitor,Double check the URL,createsend.com,false
+cargocollective,404 Not Found,cargocollective.com,false
+statuspage,Better Status Communication,statuspage.io,false
+amazonaws,NoSuchBucket,amazonaws.com,false
+cloudfront,The request could not be satisfied,cloudfront.net,false
+squarespace,The account you requested does not exist.,squarespace.com,false
