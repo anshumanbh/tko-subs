@@ -51,10 +51,10 @@ Once you have everything installed, it is as simple as issuing the command:
 name,cname,error,use_http
 
 Where
-name: is the name of the provider (e.g. github)
-cname: is the CNAME used to map a website to the provider's content (e.g. github.io)
-error: is the error message returned for an unclaimed subdomain (e.g. "There isn't a GitHub Pages site here")
-use_http: is whether to use http (not https, which is the default) to connect to the site (true or false)
+* name: is the name of the provider (e.g. github)
+* cname: is the CNAME used to map a website to the provider's content (e.g. github.io)
+* error: is the error message returned for an unclaimed subdomain (e.g. "There isn't a GitHub Pages site here")
+* use_http: is whether to use http (not https, which is the default) to connect to the site (true or false)
 
 
 
