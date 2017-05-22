@@ -43,7 +43,19 @@ Just add the above values to sample-env provided with this repo and rename it to
 ### How to run?
 
 Once you have everything installed, it is as simple as issuing the command:
-`go run /path/to/toksubs.go /path/to/subdomains.txt`
+`go run /path/to/toksubs.go /path/to/subdomains.txt /path/to/providers-data.csv`
+
+
+## How is providers-data.csv formatted?
+
+name,cname,error,use_http
+
+Where
+name: is the name of the provider (e.g. github)
+cname: is the CNAME used to map a website to the provider's content (e.g. github.io)
+error: is the error message returned for an unclaimed subdomain (e.g. "There isn't a GitHub Pages site here")
+use_http: is whether to use http (not https, which is the default) to connect to the site (true or false)
+
 
 
 ### What is going on under the hood?
@@ -63,7 +75,7 @@ This will iterate over all the domains in the `subdomains.txt` file and:
 
 ### Future Work
 
-* Take CMS name and regex from user or .env file and then automatically hook them into the tool to be able to find it
+* ~Take CMS name and regex from user or .env file and then automatically hook them into the tool to be able to find it.~ DONE
 
 
 ### Credits
