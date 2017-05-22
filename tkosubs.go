@@ -122,8 +122,8 @@ func takeover(domain string, provider string) string {
 	case "heroku":
 		return herokucreate(domain)
 	}
-	fmt.Printf("Found: Misconfigured %s website at %s", provider, domain)
-	return "This can potentially be taken over. Unfortunately, the tool does not support taking over" + provider + "websites at the moment."
+	fmt.Printf("Found: Misconfigured %s website at %s\n", provider, domain)
+	return "This can potentially be taken over. Unfortunately, the tool does not support taking over " + provider + " websites at the moment."
 }
 
 func githubcreate(domain string) string {
