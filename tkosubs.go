@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"encoding/csv"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -39,17 +38,20 @@ func main() {
 	}
 	defer recordsFile.Close()
 	recordsReader := bufio.NewReader(recordsFile)
-	records := csv.NewReader(recordsReader)
+	csvReader := csv.NewReader(recordsReader)
+	records, err := csvReader.ReadAll()
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	for domainsScanner.Scan() {
 		domain := domainsScanner.Text()
 
 		fmt.Println(IsReachable(domain, records))
 	}
-
 }
 
-func IsReachable(domain string, records *csv.Reader) string {
+func IsReachable(domain string, records [][]string) string {
 	ch := make(chan string, 1)
 	go func() {
 		select {
@@ -61,18 +63,16 @@ func IsReachable(domain string, records *csv.Reader) string {
 	return <-ch
 }
 
-func check(domain string, records *csv.Reader) string {
+func check(domain string, records [][]string) string {
 	cname, _ := net.LookupCNAME(domain)
-	for {
-		record, err := records.Read()
-		if err == io.EOF {
-			break
-		}
+	for i := range records{
+
+		record := records[i]
+
 		provider_name := record[0]  // The name of the provider
 		provider_cname := record[1] // The CNAME used by the provider
 		provider_error := record[2] // The error message that's returned for an unclaimed domain
 		provider_http := record[3]  // Access through http not https (true or false)
-
 		usesprovider, _ := regexp.MatchString(provider_cname, cname)
 		if usesprovider {
 			tr := &http.Transport{
