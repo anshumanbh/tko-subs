@@ -7,10 +7,10 @@ shopify,myshopify.com,Only one step left!,false
 shopify,myshopify.com,"Sorry, this shop is currently unavailable.",false
 instapage,pageserve.co,You've Discovered A Missing Link. Our Apologies!,false
 desk,desk.com,Please try again or try Desk.com free for 14 days.,false
-tictail,Building a brand of your own?,tictail.com,true
-campaignmonitor,Double check the URL,createsend.com,false
-cargocollective,404 Not Found,cargocollective.com,false
-statuspage,Better Status Communication,statuspage.io,false
-amazonaws,NoSuchBucket,amazonaws.com,false
-cloudfront,The request could not be satisfied,cloudfront.net,false
-squarespace,The account you requested does not exist.,squarespace.com,false
+tictail,tictail.com,Building a brand of your own?,true
+campaignmonitor,createsend.com,Double check the URL,false
+cargocollective,cargocollective.com,404 Not Found,false
+statuspage,statuspage.io,Better Status Communication,false
+amazonaws,amazonaws.com,NoSuchBucket,false
+cloudfront,cloudfront.net,The request could not be satisfied,false
+squarespace,squarespace.com,is not available,false
