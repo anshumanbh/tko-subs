@@ -46,7 +46,7 @@ Once you have everything installed, it is as simple as issuing the command:
 `go run /path/to/toksubs.go /path/to/subdomains.txt /path/to/providers-data.csv`
 
 
-## How is providers-data.csv formatted?
+### How is providers-data.csv formatted?
 
 name,cname,error,use_http
 
