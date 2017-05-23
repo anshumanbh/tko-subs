@@ -24,6 +24,9 @@ func main() {
 	gotenv.Load()
 
 	domainsFilePath := os.Args[1]
+	recordsFilePath := os.Args[2]
+	outputFilePath := os.Args[3]
+
 	domainsFile, err := os.Open(domainsFilePath)
 	if err != nil {
 		log.Fatalln(err)
@@ -31,7 +34,6 @@ func main() {
 	defer domainsFile.Close()
 	domainsScanner := bufio.NewScanner(domainsFile)
 
-	recordsFilePath := os.Args[2]
 	recordsFile, err := os.Open(recordsFilePath)
 	if err != nil {
 		log.Fatalln(err)
@@ -44,26 +46,40 @@ func main() {
 		log.Fatal(err)
 	}
 
+	var output [][]string
+
 	for domainsScanner.Scan() {
 		domain := domainsScanner.Text()
 
-		fmt.Println(IsReachable(domain, records))
+		output = append(output, IsReachable(domain, records))
 	}
+
+	outputFile, _ := os.Create(outputFilePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer outputFile.Close()
+
+	outputWriter := csv.NewWriter(outputFile)
+	outputWriter.WriteAll(output)
 }
 
-func IsReachable(domain string, records [][]string) string {
-	ch := make(chan string, 1)
+func IsReachable(domain string, records [][]string) []string {
+	ch := make(chan []string, 1)
 	go func() {
 		select {
 		case ch <- check(domain, records):
 		case <-time.After(5 * time.Second):
-			ch <- "timedout"
+			fmt.Println("timedout")
 		}
 	}()
 	return <-ch
 }
 
-func check(domain string, records [][]string) string {
+func check(domain string, records [][]string) []string {
+	// domain, provider, vulnerable, takenover
+	output := []string{domain, "", "false", "false"}
+
 	cname, _ := net.LookupCNAME(domain)
 	for i := range records{
 
@@ -75,6 +91,7 @@ func check(domain string, records [][]string) string {
 		provider_http := record[3]  // Access through http not https (true or false)
 		usesprovider, _ := regexp.MatchString(provider_cname, cname)
 		if usesprovider {
+			output[1] = provider_name
 			tr := &http.Transport{
 				Dial: (&net.Dialer{
 					Timeout: 5 * time.Second,
@@ -97,22 +114,29 @@ func check(domain string, records [][]string) string {
 			response, err := client.Get(protocol + domain)
 			if err != nil {
 				fmt.Println("")
-				return "Can't reach the domain " + domain
+				fmt.Println("Can't reach the domain " + domain)
+				return output
 			}
 
 			text, err := ioutil.ReadAll(response.Body)
 			if err != nil {
 				log.Fatal(err)
-				return "Trouble reading response"
+				fmt.Println("Trouble reading response")
+				return output
 			}
 
 			cantakeover, _ := regexp.MatchString(provider_error, string(text))
 			if cantakeover {
-				return takeover(domain, provider_name)
+				output[2] = "true"
+				if takeover(domain, provider_name) {
+					output[3] = "true"
+				}
 			}
+			return output
 		}
 	}
-	return domain + " Not found as dangling for any of the common content hosting websites"
+	fmt.Println(domain + " Not found as dangling for any of the common content hosting websites")
+	return output
 }
 
 func takeover(domain string, provider string) bool {
