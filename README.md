@@ -42,8 +42,8 @@ Just add the above values to sample-env provided with this repo and rename it to
 
 ### How to run?
 
-Once you have everything installed, it is as simple as issuing the command:
-`go run /path/to/toksubs.go /path/to/subdomains.txt /path/to/providers-data.csv /path/to/output.csv`
+Once you have everything installed, it is as simple as issuing the command:  
+`go run /path/to/toksubs.go -domains=domains.txt -data=providers-data.csv -output=output.csv`
 
 
 ### How is providers-data.csv formatted?
