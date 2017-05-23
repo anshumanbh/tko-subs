@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/tls"
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -23,18 +24,20 @@ func main() {
 
 	gotenv.Load()
 
-	domainsFilePath := os.Args[1]
-	recordsFilePath := os.Args[2]
-	outputFilePath := os.Args[3]
+	domainsFilePath := flag.String("domains", "domains.txt", "List of domains to check")
+	recordsFilePath := flag.String("data", "providers-data.csv", "CSV file containing providers' data")
+	outputFilePath := flag.String("output", "output.csv", "File to save results in")
 
-	domainsFile, err := os.Open(domainsFilePath)
+	flag.Parse()
+
+	domainsFile, err := os.Open(*domainsFilePath)
 	if err != nil {
 		log.Fatalln(err)
 	}
 	defer domainsFile.Close()
 	domainsScanner := bufio.NewScanner(domainsFile)
 
-	recordsFile, err := os.Open(recordsFilePath)
+	recordsFile, err := os.Open(*recordsFilePath)
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -54,7 +57,7 @@ func main() {
 		output = append(output, IsReachable(domain, records))
 	}
 
-	outputFile, _ := os.Create(outputFilePath)
+	outputFile, _ := os.Create(*outputFilePath)
 	if err != nil {
 		log.Fatal(err)
 	}
