@@ -59,7 +59,7 @@ name,cname,error,http
 * http: Whether to use http (not https, which is the default) to connect to the site (true/false)
 
 
-### How is the output formatted
+### How is the output formatted?
 
 Domain,Provider,IsVulnerable,IsTakenOver,RespString
 
@@ -96,9 +96,9 @@ This will iterate over all the domains (concurrently using GoRoutines) in the `s
 
 ### Credits
 
-Thanks to Luke Young (@TheBoredEng) for helping me out with the go-github library.
-Thanks to Frans Rosen (@fransrosen) for helping me understand the technical details that are required for some of the takeovers.
-Thanks to Mohammed Diaa (@mhmdiaa) for taking time to implement the provider data functionality and getting the code going.
+* Thanks to Luke Young (@TheBoredEng) for helping me out with the go-github library.
+* Thanks to Frans Rosen (@fransrosen) for helping me understand the technical details that are required for some of the takeovers.
+* Thanks to Mohammed Diaa (@mhmdiaa) for taking time to implement the provider data functionality and getting the code going.
 
 
 ### Changelog
