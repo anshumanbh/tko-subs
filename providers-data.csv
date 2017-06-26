@@ -1,6 +1,7 @@
-github,github.io,There isn't a GitHub Pages site here.,false
-github,github.io,For root URLs (like http://example.com/) you must provide an index.html file,false
-heroku,herokuapp.com,Heroku | No such app,false
+name,cname,string,http
+github,github,There isn't a GitHub Pages site here.,false
+github,github,For root URLs (like http://example.com/) you must provide an index.html file,false
+heroku,heroku,"There's nothing here, yet.",true
 unbounce,unbouncepages.com,The requested URL / was not found on this server.,false
 tumblr,tumblr.com,There's nothing here.,true
 shopify,myshopify.com,Only one step left!,false
