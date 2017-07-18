@@ -23,12 +23,11 @@ We need GO installed. Once you have GO, `go get` the following libraries:
 * go get github.com/bgentry/heroku-go
 * go get github.com/google/go-github/github
 
-The next thing we need to do is to add the following values to the `.env` file:
+The next thing we need to do is to get the following information:
 * Github's Personal Access Token - Make sure this token has the rights to create repositories, references, contents, etc. You can create this token here - https://github.com/settings/tokens
 * Heroku Username and API key
-* Heroku app name - You can create a static app on Heroku with whatever you want to be displayed on its homepage by following the instructions here - https://gist.github.com/wh1tney/2ad13aa5fbdd83f6a489. Once you create that app, just copy paste that app name in the .env file. We will use that app to takeover the domain (with the dangling CNAME to another Heroku app).
+* Heroku app name - You can create a static app on Heroku with whatever you want to be displayed on its homepage by following the instructions here - https://gist.github.com/wh1tney/2ad13aa5fbdd83f6a489. Once you create that app, use that app name in the flag (see below). We will use that app to takeover the domain (with the dangling CNAME to another Heroku app).
 
-Just add the above values to sample-env provided with this repo and rename it to .env and you should be good to go!
 NOTE - You only need these values if you want to take over subdomains. By default, that's not required.
 
 
@@ -38,7 +37,9 @@ Once you have everything installed, it is as simple as issuing the command:
 `go run /path/to/toksubs.go -domains=domains.txt -data=providers-data.csv -output=output.csv`
 
 If you want to take over as well, the command would be:
-`go run /path/to/toksubs.go -domains=domains.txt -data=providers-data.csv -output=output.csv -takeover`
+`go run /path/to/toksubs.go -domains=domains.txt -data=providers-data.csv -output=output.csv -takeover -githubtoken=<github-token> -herokuusername=<heroku-username> -herokuapikey=<heroku-api-key> -herokuappname=<heroku-app-name>`
+
+Note: You can supply the data of one provider only
 
 By default:
 * the `domains` flag is set to `domains.txt`
