@@ -22,7 +22,6 @@ import (
 	heroku "github.com/bgentry/heroku-go"
 	"github.com/gocarina/gocsv"
 	"github.com/google/go-github/github"
-	"github.com/subosito/gotenv"
 )
 
 var tkoRes []tkosubsResult //global variable to store all the results
@@ -33,6 +32,10 @@ var (
 	recordsFilePath = flag.String("data", "providers-data.csv", "CSV file containing CMS providers' string for identification")
 	outputFilePath  = flag.String("output", "output.csv", "Output file to save the results")
 	takeOver        = flag.Bool("takeover", false, "Flag to denote if a vulnerable domain needs to be taken over or not")
+	githubtoken     = flag.String("githubtoken", "", "Github personal access token")
+	herokuusername  = flag.String("herokuusername", "", "Heroku username")
+	herokuapikey    = flag.String("herokuapikey", "", "Heroku API key")
+	herokuappname   = flag.String("herokuappname", "", "Heroku app name")
 )
 
 //Checkiferr function as a generic check for error function
@@ -85,7 +88,7 @@ func githubcreate(domain string) (bool, error) {
 	ctx := context.Background()
 
 	// Connecting to your Github account using the Personal Access Token
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: os.Getenv("githubtoken")})
+	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: *githubtoken})
 	tc := oauth2.NewClient(ctx, ts)
 	client := github.NewClient(tc)
 
@@ -167,12 +170,12 @@ func githubcreate(domain string) (bool, error) {
 //herokucreate function to take over dangling Heroku apps
 func herokucreate(domain string) (bool, error) {
 
-	// Connecting to your Heroku account using the usernamd and the API key provided in the .env file
-	client := heroku.Client{Username: os.Getenv("herokuusername"), Password: os.Getenv("herokuapikey")}
+	// Connecting to your Heroku account using the username and the API key provided as flags
+	client := heroku.Client{Username: *herokuusername, Password: *herokuapikey}
 
-	// Adding the dangling domain as a custom domain for your appname that is retrieved from the .env file
+	// Adding the dangling domain as a custom domain for your appname that is retrieved from the flag
 	// This results in the dangling domain pointing to your Heroku appname
-	client.DomainCreate(os.Getenv("herokuappname"), domain)
+	client.DomainCreate(*herokuappname, domain)
 
 	Info("Please check " + domain + " after a few minutes to ensure that it has been taken over..")
 	return true, nil
@@ -281,9 +284,6 @@ func scanforeachDomain(domain string, cmsRecords []*CMS, wg *sync.WaitGroup) {
 }
 
 func main() {
-
-	//Loading the environment variables from the .env file
-	gotenv.Load()
 
 	//Parsing the flags
 	flag.Parse()
