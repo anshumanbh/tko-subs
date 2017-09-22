@@ -18,6 +18,8 @@ By default, this tool does not allow taking over of subdomains. If you want to d
 
 We need GO installed. Once you have GO, just type `go get github.com/anshumanbh/tko-subs` to download the tool.
 
+Once the tool is downloaded, type `tko-subs -h`.
+
 The next thing we need to do is to get the following information:
 * Github's Personal Access Token - Make sure this token has the rights to create repositories, references, contents, etc. You can create this token here - https://github.com/settings/tokens
 * Heroku Username and API key
@@ -28,11 +30,14 @@ NOTE - You only need these values if you want to take over subdomains. By defaul
 
 ### How to run?
 
-Once you have everything installed, it is as simple as issuing the command:
-`go run /path/to/tksoubs.go -domains=domains.txt -data=providers-data.csv -output=output.csv`
+Once you have everything installed, `cd` into the directory and type:
+`tko-subs -domains=domains.txt -data=providers-data.csv -output=output.csv`
 
 If you want to take over as well, the command would be:
-`go run /path/to/toksubs.go -domains=domains.txt -data=providers-data.csv -output=output.csv -takeover -githubtoken=<github-token> -herokuusername=<heroku-username> -herokuapikey=<heroku-api-key> -herokuappname=<heroku-app-name>`
+`tko-subs -domains=domains.txt -data=providers-data.csv -output=output.csv -takeover -githubtoken=<github-token> -herokuusername=<heroku-username> -herokuapikey=<heroku-api-key> -herokuappname=<heroku-app-name>`
+
+If you just want to check for a single domain, type:
+`tko-subs -domain <domain-name>`
 
 Note: You can supply the data of one provider only
 
@@ -41,8 +46,9 @@ By default:
 * the `data` flag is set to `providers-data.csv`
 * the `output` flag is set to `output.csv`
 * the `takeover` flag is not set so no take over by default
+* the `domain` flag is NOT set so it will always check for all the domains mentioned in the `domains.txt` file. If the `domain` flag is mentioned, it will only check that domain and ignore the `domains.txt` file, even if present
 
-So, simply running `go run /path/to/toksubs.go` would run with the default values mentioned above.
+So, simply running `tkosubs` would run with the default values mentioned above.
 
 
 ### How is providers-data.csv formatted?
@@ -98,6 +104,10 @@ This will iterate over all the domains (concurrently using GoRoutines) in the `s
 
 
 ### Changelog
+
+`9/22`
+* Added an optional flag to check for single domain
+* Made it easier to install and run
 
 `6/25`
 * Made the code much more faster by implementing goroutines
