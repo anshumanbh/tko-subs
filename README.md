@@ -16,12 +16,7 @@ By default, this tool does not allow taking over of subdomains. If you want to d
 
 ### Pre-requisites
 
-We need GO installed. Once you have GO, `go get` the following libraries:
-* go get github.com/gocarina/gocsv
-* go get golang.org/x/oauth2
-* go get github.com/subosito/gotenv
-* go get github.com/bgentry/heroku-go
-* go get github.com/google/go-github/github
+We need GO installed. Once you have GO, just type `go get github.com/anshumanbh/tko-subs` to download the tool.
 
 The next thing we need to do is to get the following information:
 * Github's Personal Access Token - Make sure this token has the rights to create repositories, references, contents, etc. You can create this token here - https://github.com/settings/tokens
@@ -34,7 +29,7 @@ NOTE - You only need these values if you want to take over subdomains. By defaul
 ### How to run?
 
 Once you have everything installed, it is as simple as issuing the command:
-`go run /path/to/toksubs.go -domains=domains.txt -data=providers-data.csv -output=output.csv`
+`go run /path/to/tksoubs.go -domains=domains.txt -data=providers-data.csv -output=output.csv`
 
 If you want to take over as well, the command would be:
 `go run /path/to/toksubs.go -domains=domains.txt -data=providers-data.csv -output=output.csv -takeover -githubtoken=<github-token> -herokuusername=<heroku-username> -herokuapikey=<heroku-api-key> -herokuappname=<heroku-app-name>`

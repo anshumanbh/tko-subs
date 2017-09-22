@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"sync"
 	"time"
 
@@ -36,6 +37,7 @@ var (
 	herokuusername  = flag.String("herokuusername", "", "Heroku username")
 	herokuapikey    = flag.String("herokuapikey", "", "Heroku API key")
 	herokuappname   = flag.String("herokuappname", "", "Heroku app name")
+	domain          = flag.String("domain", "", "Single domain to check")
 )
 
 //Checkiferr function as a generic check for error function
@@ -283,6 +285,103 @@ func scanforeachDomain(domain string, cmsRecords []*CMS, wg *sync.WaitGroup) {
 	wg.Done()
 }
 
+//scansingleDomain function to scan for the domain being passed
+func scansingleDomain(domain string, cmsRecords []*CMS) (bool, bool, error) {
+
+	//Doing CNAME lookups using GOLANG's net package or for that matter just doing a host on a domain
+	//does not necessarily let us know about any dead DNS records. So, we need to use dig CNAME <domain> +short
+	//to properly figure out if there are any dead DNS records
+
+	cmd := exec.Command("dig", "CNAME", domain, "+short")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	Checkiferr(err)
+
+	//Grabbing the output from the DIG command and storing it in the cname variable
+	cname := out.String()
+
+	var isVulnerable bool
+	var isTakenOver bool
+
+	//Defining the transport client that we will need to curl domains
+	tr := &http.Transport{
+		Dial: (&net.Dialer{
+			Timeout: 5 * time.Second,
+		}).Dial,
+		TLSHandshakeTimeout: 5 * time.Second,
+		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true},
+	}
+
+	timeout := time.Duration(5 * time.Second)
+	client := &http.Client{
+		Transport: tr,
+		Timeout:   timeout,
+	}
+
+	//Now, for each entry in the data providers file, we will check to see if the output
+	//from the dig command against the current domain matches the CNAME for that data provider
+	//if it matches the CNAME, we need to now check if it matches the string for that data provider
+	//So, we curl it and see if it matches. At this point, we know its vulnerable
+	//Next, if we have the -takeover flag set to 1, we will also try to take over the dangling subdomain
+	isVulnerable = false
+	isTakenOver = false
+
+	for _, cmsRecord := range cmsRecords {
+
+		//by default, we try to curl using https but there are some CMS that take http only
+		//we specify this in the data providers file
+		protocol := "https://"
+		if cmsRecord.OverHTTP == "true" {
+			protocol = "http://"
+		}
+
+		usesprovider, err := regexp.MatchString(cmsRecord.CName, cname) //matching for the CNAME
+		Checkiferr(err)
+
+		if usesprovider {
+			fmt.Println(domain + " has a CNAME matching the provider: " + cmsRecord.Name)
+
+			//Heroku behaves slightly different. Even if there is a dead DNS record for Heroku
+			//it would not resolve using host and you can't curl the website unlike other CMS
+			//but you will find it using dig
+			//So, if there is a CNAME match for heroku and can't curl it, we will assume its vulnerable
+			//if its not heroku, we will try to curl and regex match the string obtained in the response with
+			//the string specified in the data providers file to see if its vulnerable or not
+
+			response, err := client.Get(protocol + domain)
+			if err != nil && cmsRecord.Name == "heroku" {
+				isVulnerable = true
+				fmt.Println("Can't CURL it but dig shows a dead DNS record")
+			} else if err != nil && cmsRecord.Name != "heroku" {
+				fmt.Println(err)
+				panic(err)
+			} else if err == nil {
+				text, err := ioutil.ReadAll(response.Body)
+				Checkiferr(err)
+
+				isVulnerable, err = regexp.MatchString(cmsRecord.String, string(text))
+				Checkiferr(err)
+			}
+
+			//We now know if its vulnerable or not.
+			if isVulnerable {
+				switch *takeOver { //we know its vulnerable now. depending upon the flag to take over or not, we go forward
+				case true:
+					takenOver, err := takeoversub(domain, cmsRecord.Name)
+					Checkiferr(err)
+					if takenOver { //if successfully taken over
+						isTakenOver = true
+					}
+				}
+
+			}
+
+		}
+	}
+	return isVulnerable, isTakenOver, nil
+}
+
 func main() {
 
 	//Parsing the flags
@@ -300,36 +399,44 @@ func main() {
 	err = gocsv.UnmarshalFile(clientsFile, &cmsRecords)
 	Checkiferr(err)
 
-	//Opening the domains file to test each domain
-	domainsFile, err := os.Open(*domainsFilePath)
-	Checkiferr(err)
-	defer domainsFile.Close()
+	if *domain != "" {
+		isVuln, isTKO, err := scansingleDomain(*domain, cmsRecords)
+		Checkiferr(err)
+		fmt.Println("VULNERABLE: " + strconv.FormatBool(isVuln))
+		fmt.Println("TAKEN OVER: " + strconv.FormatBool(isTKO))
 
-	//Instantiating the bufio scanner to read the domains file
-	domainsScanner := bufio.NewScanner(domainsFile)
+	} else {
 
-	//For each domain being read, scan it to see if it has a dangling CNAME that can be taken over
-	var wg sync.WaitGroup
-	for domainsScanner.Scan() {
-		wg.Add(1)
-		domain := domainsScanner.Text()
-		go scanforeachDomain(domain, cmsRecords, &wg) //function to scan for each domain being run in a goroutine
+		//Opening the domains file to test each domain
+		domainsFile, err := os.Open(*domainsFilePath)
+		Checkiferr(err)
+		defer domainsFile.Close()
+
+		//Instantiating the bufio scanner to read the domains file
+		domainsScanner := bufio.NewScanner(domainsFile)
+
+		//For each domain being read, scan it to see if it has a dangling CNAME that can be taken over
+		var wg sync.WaitGroup
+		for domainsScanner.Scan() {
+			wg.Add(1)
+			domain := domainsScanner.Text()
+			go scanforeachDomain(domain, cmsRecords, &wg) //function to scan for each domain being run in a goroutine
+		}
+		wg.Wait()
+
+		//We have all the results now. Printing it out on the screen
+		for _, element := range tkoRes {
+			fmt.Println(element)
+		}
+
+		//Also, saving it back to a csv file
+		outputFile, err := os.Create(*outputFilePath)
+		Checkiferr(err)
+		defer outputFile.Close()
+
+		err = gocsv.MarshalFile(&tkoRes, outputFile)
+		Checkiferr(err)
+
+		Info("Results saved to: " + *outputFilePath)
 	}
-	wg.Wait()
-
-	//We have all the results now. Printing it out on the screen
-	for _, element := range tkoRes {
-		fmt.Println(element)
-	}
-
-	//Also, saving it back to a csv file
-	outputFile, err := os.Create(*outputFilePath)
-	Checkiferr(err)
-	defer outputFile.Close()
-
-	err = gocsv.MarshalFile(&tkoRes, outputFile)
-	Checkiferr(err)
-
-	Info("Results saved to: " + *outputFilePath)
-
 }
