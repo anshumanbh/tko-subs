@@ -48,7 +48,7 @@ By default:
 * the `takeover` flag is not set so no take over by default
 * the `domain` flag is NOT set so it will always check for all the domains mentioned in the `domains.txt` file. If the `domain` flag is mentioned, it will only check that domain and ignore the `domains.txt` file, even if present
 
-So, simply running `tkosubs` would run with the default values mentioned above.
+So, simply running `tko-subs` would run with the default values mentioned above.
 
 
 ### How is providers-data.csv formatted?
