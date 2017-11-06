@@ -103,7 +103,7 @@ func main() {
 					fmt.Printf("[%s] Domain problem : %s\n", domain, err)
 				}
 				<- sem
-			    	wg.Done()
+			    wg.Done()
 			}(domainsScanner.Text())
 		}
 		wg.Wait()
@@ -289,11 +289,11 @@ func checkCnameAgainstProviders(domain string, cname string, cmsRecords []*CMS, 
 		if usesprovider {
 			scanResult := evaluateDomainProvider(domain, cname, cmsRecord, client)
 			if (*config.takeOver && scanResult.IsVulnerable) {
-				_, err := takeoversub(scanResult.Domain, scanResult.Provider, config)
+				isTakenOver, err := takeoversub(scanResult.Domain, scanResult.Provider, config)
 				if (err != nil) {
-					scanResult.IsTakenOver = true
 					scanResult.Response = err.Error()
 				}
+				scanResult.IsTakenOver = isTakenOver
 			}
 			scanResults = append(scanResults, scanResult)
 		}
