@@ -65,7 +65,7 @@ name,cname,string,http
 
 ### How is the output formatted?
 
-Domain,Provider,IsVulnerable,IsTakenOver,RespString
+Domain,CNAME,Provider,IsVulnerable,IsTakenOver,Response
 
 * Domain: The domain checked
 * CNAME: The CNAME of the domain
