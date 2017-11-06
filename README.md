@@ -39,7 +39,8 @@ If you want to take over as well, the command would be:
 If you just want to check for a single domain, type:
 `tko-subs -domain <domain-name>`
 
-Note: You can supply the data of one provider only
+If you just want to check for multiple domains, type:
+`tko-subs -domain <domain-name-1>,<domain-name-2>`
 
 By default:
 * the `domains` flag is set to `domains.txt`
@@ -47,17 +48,18 @@ By default:
 * the `output` flag is set to `output.csv`
 * the `takeover` flag is not set so no take over by default
 * the `domain` flag is NOT set so it will always check for all the domains mentioned in the `domains.txt` file. If the `domain` flag is mentioned, it will only check that domain and ignore the `domains.txt` file, even if present
+* the `threads` flag is set to `5`
 
 So, simply running `tko-subs` would run with the default values mentioned above.
 
 
 ### How is providers-data.csv formatted?
 
-name,cname,error,http
+name,cname,string,http
 
 * name: The name of the provider (e.g. github)
 * cname: The CNAME used to map a website to the provider's content (e.g. github.io)
-* error: The error message returned for an unclaimed subdomain (e.g. "There isn't a GitHub Pages site here")
+* string: The error message returned for an unclaimed subdomain (e.g. "There isn't a GitHub Pages site here")
 * http: Whether to use http (not https, which is the default) to connect to the site (true/false)
 
 
@@ -66,10 +68,11 @@ name,cname,error,http
 Domain,Provider,IsVulnerable,IsTakenOver,RespString
 
 * Domain: The domain checked
+* CNAME: The CNAME of the domain
 * Provider: The provider the domain was found to be using
 * IsVulnerable: Whether the domain was found to be vulnerable or not (true/false)
 * IsTakenOver: Whether the domain was taken over or not (true/false)
-* RespString: The message that the subdomain was checked against
+* Response: The message that the subdomain was checked against
 
 
 ### What is going on under the hood?
@@ -101,9 +104,13 @@ This will iterate over all the domains (concurrently using GoRoutines) in the `s
 * Thanks to Luke Young (@TheBoredEng) for helping me out with the go-github library.
 * Thanks to Frans Rosen (@fransrosen) for helping me understand the technical details that are required for some of the takeovers.
 * Thanks to Mohammed Diaa (@mhmdiaa) for taking time to implement the provider data functionality and getting the code going.
+* Thanks to high-stakes for a much needed code refresh.
 
 
 ### Changelog
+
+`11/6`
+* high-stakes issues a PR with a bunch of new code that fixes a few bugs and makes the code cleaner
 
 `9/22`
 * Added an optional flag to check for single domain
