@@ -35,7 +35,7 @@ type CMS struct {
 	OverHTTP string `csv:"http"`
 }
 
-type ScanResult struct {
+type DomainScan struct {
 	Domain       string
 	Cname        string
 	Provider     string
@@ -72,7 +72,7 @@ func main() {
 	flag.Parse()
 
 	cmsRecords := loadProviders(*config.recordsFilePath)
-	var allResults []ScanResult
+	var allResults []DomainScan
 
 	if *config.domain != "" {
 		for _, domain := range strings.Split(*config.domain, ",") {
@@ -89,12 +89,14 @@ func main() {
 		defer domainsFile.Close()
 		domainsScanner := bufio.NewScanner(domainsFile)
 
+		//Create an exec-queue with fixed size for parallel threads, it will block until new element can be added
+		//Use this with a waitgroup to wait for threads which will be still executing after we have no elements to add to the queue
+		semaphore := make(chan bool, *config.threadCount)
 		var wg sync.WaitGroup
-		sem := make(chan bool, *config.threadCount)
 
 		for domainsScanner.Scan() {
 			wg.Add(1)
-			sem <- true
+			semaphore <- true
 			go func(domain string) {
 				scanResults, err := scanDomain(domain, cmsRecords, config)
 				if (err == nil) {
@@ -102,8 +104,8 @@ func main() {
 				} else {
 					fmt.Printf("[%s] Domain problem : %s\n", domain, err)
 				}
-				<- sem
-			    wg.Done()
+				<- semaphore
+				wg.Done()
 			}(domainsScanner.Text())
 		}
 		wg.Wait()
@@ -129,20 +131,20 @@ func Info(format string, args ...interface{}) {
 	fmt.Printf("\x1b[34;1m%s\x1b[0m\n", fmt.Sprintf(format, args...))
 }
 
-//takeoversub function to decide what to do depending upon the CMS
-func takeoversub(domain string, provider string, config Configuration) (bool, error) {
+//takeOverSub function to decide what to do depending upon the CMS
+func takeOverSub(domain string, provider string, config Configuration) (bool, error) {
 	switch provider {
 	case "github":
-		return githubcreate(domain, config)
+		return githubCreate(domain, config)
 	case "heroku":
-		return herokucreate(domain, config)
+		return herokuCreate(domain, config)
 	}
 	return false, nil
 }
 
-//githubcreate function to take over dangling Github Pages
-// Connecting to your Github account using the Personal Access Token
-func githubcreate(domain string, config Configuration) (bool, error) {
+//githubCreate function to take over dangling Github Pages
+//Connecting to your Github account using the Personal Access Token
+func githubCreate(domain string, config Configuration) (bool, error) {
 	ctx := context.Background()
 	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: *config.githubtoken})
 	tc := oauth2.NewClient(ctx, ts)
@@ -223,11 +225,11 @@ func githubcreate(domain string, config Configuration) (bool, error) {
 	return true, nil
 }
 
-//herokucreate function to take over dangling Heroku apps
-// Connecting to your Heroku account using the username and the API key provided as flags
-// Adding the dangling domain as a custom domain for your appname that is retrieved from the flag
-// This results in the dangling domain pointing to your Heroku appname
-func herokucreate(domain string, config Configuration) (bool, error) {
+//herokuCreate function to take over dangling Heroku apps
+//Connecting to your Heroku account using the username and the API key provided as flags
+//Adding the dangling domain as a custom domain for your appname that is retrieved from the flag
+//This results in the dangling domain pointing to your Heroku appname
+func herokuCreate(domain string, config Configuration) (bool, error) {
 	client := heroku.Client{Username: *config.herokuusername, Password: *config.herokuapikey}
 	client.DomainCreate(*config.herokuappname, domain)
 	Info("Please check " + domain + " after a few minutes to ensure that it has been taken over..")
@@ -235,11 +237,11 @@ func herokucreate(domain string, config Configuration) (bool, error) {
 	return true, nil
 }
 
-//scanforeachDomain function to scan for each domain being read from the domains file
+//scanDomain function to scan for each domain being read from the domains file
 //Doing CNAME lookups using GOLANG's net package or for that matter just doing a host on a domain
 //does not necessarily let us know about any dead DNS records. So, we need to use dig CNAME <domain> +short
 //to properly figure out if there are any dead DNS records
-func scanDomain(domain string, cmsRecords []*CMS, config Configuration) ([]ScanResult, error) {
+func scanDomain(domain string, cmsRecords []*CMS, config Configuration) ([]DomainScan, error) {
 	cname, err := getCnameForDomain(domain)
 	if (err != nil) {
 		return nil, err
@@ -274,22 +276,21 @@ func getCnameForDomain(domain string) (string, error) {
 //from the dig command against the current domain matches the CNAME for that data provider
 //if it matches the CNAME, we need to now check if it matches the string for that data provider
 //So, we curl it and see if it matches. At this point, we know its vulnerable
-//Next, if we have the -takeover flag set to 1, we will also try to take over the dangling subdomain
-func checkCnameAgainstProviders(domain string, cname string, cmsRecords []*CMS, config Configuration) ([]ScanResult) {
+func checkCnameAgainstProviders(domain string, cname string, cmsRecords []*CMS, config Configuration) ([]DomainScan) {
 	transport := &http.Transport{
 		Dial: (&net.Dialer{ Timeout: 10 * time.Second }).Dial,
 		TLSHandshakeTimeout: 10 * time.Second,
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 
 	client := &http.Client{Transport: transport, Timeout: time.Duration(10 * time.Second)}
-	var scanResults []ScanResult
+	var scanResults []DomainScan
 
 	for _, cmsRecord := range cmsRecords {
 		usesprovider, _ := regexp.MatchString(cmsRecord.CName, cname)
 		if usesprovider {
 			scanResult := evaluateDomainProvider(domain, cname, cmsRecord, client)
 			if (*config.takeOver && scanResult.IsVulnerable) {
-				isTakenOver, err := takeoversub(scanResult.Domain, scanResult.Provider, config)
+				isTakenOver, err := takeOverSub(scanResult.Domain, scanResult.Provider, config)
 				if (err != nil) {
 					scanResult.Response = err.Error()
 				}
@@ -307,8 +308,8 @@ func checkCnameAgainstProviders(domain string, cname string, cmsRecords []*CMS, 
 //So, if there is a CNAME match for heroku and can't curl it, we will assume its vulnerable
 //if its not heroku, we will try to curl and regex match the string obtained in the response with
 //the string specified in the data providers file to see if its vulnerable or not
-func evaluateDomainProvider(domain string, cname string, cmsRecord *CMS, client *http.Client) (ScanResult) {
-	scanResult := ScanResult{ Domain: domain, Cname: cname, 
+func evaluateDomainProvider(domain string, cname string, cmsRecord *CMS, client *http.Client) (DomainScan) {
+	scanResult := DomainScan{ Domain: domain, Cname: cname, 
 		IsTakenOver: false, IsVulnerable: false, Provider : cmsRecord.Name }
 	protocol := "https://"
 	if cmsRecord.OverHTTP == "true" {
@@ -347,7 +348,7 @@ func loadProviders(recordsFilePath string) ([]*CMS) {
 	return cmsRecords
 }
 
-func writeResultsToCsv(scanResults []ScanResult, outputFilePath string) {
+func writeResultsToCsv(scanResults []DomainScan, outputFilePath string) {
 	outputFile, err := os.Create(outputFilePath)
 	panicOnError(err)
 	defer outputFile.Close()
@@ -356,7 +357,7 @@ func writeResultsToCsv(scanResults []ScanResult, outputFilePath string) {
 	panicOnError(err)
 }
 
-func printResults(scanResults []ScanResult) {
+func printResults(scanResults []DomainScan) {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Domain", "Cname", "Provider", "Vulnerable", "Taken Over", "Response"})
 	
