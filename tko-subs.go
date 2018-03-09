@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -14,9 +15,8 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"strings"
 	"strconv"
-	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,17 +58,17 @@ type Configuration struct {
 }
 
 func main() {
-	config := Configuration {
-		domainsFilePath : flag.String("domains", "domains.txt", "List of domains to check"),
-		recordsFilePath : flag.String("data", "providers-data.csv", "CSV file containing CMS providers' string for identification"),
-		outputFilePath  : flag.String("output", "output.csv", "Output file to save the results"),
-		takeOver        : flag.Bool("takeover", false, "Flag to denote if a vulnerable domain needs to be taken over or not"),
-		githubtoken     : flag.String("githubtoken", "", "Github personal access token"),
-		herokuusername  : flag.String("herokuusername", "", "Heroku username"),
-		herokuapikey    : flag.String("herokuapikey", "", "Heroku API key"),
-		herokuappname   : flag.String("herokuappname", "", "Heroku app name"),
-		domain          : flag.String("domain", "", "Domains separated by ,"),
-		threadCount     : flag.Int("threads", 5, "Number of threads to run parallel")}
+	config := Configuration{
+		domainsFilePath: flag.String("domains", "domains.txt", "List of domains to check"),
+		recordsFilePath: flag.String("data", "providers-data.csv", "CSV file containing CMS providers' string for identification"),
+		outputFilePath:  flag.String("output", "output.csv", "Output file to save the results"),
+		takeOver:        flag.Bool("takeover", false, "Flag to denote if a vulnerable domain needs to be taken over or not"),
+		githubtoken:     flag.String("githubtoken", "", "Github personal access token"),
+		herokuusername:  flag.String("herokuusername", "", "Heroku username"),
+		herokuapikey:    flag.String("herokuapikey", "", "Heroku API key"),
+		herokuappname:   flag.String("herokuappname", "", "Heroku app name"),
+		domain:          flag.String("domain", "", "Domains separated by ,"),
+		threadCount:     flag.Int("threads", 5, "Number of threads to run parallel")}
 	flag.Parse()
 
 	cmsRecords := loadProviders(*config.recordsFilePath)
@@ -77,7 +77,7 @@ func main() {
 	if *config.domain != "" {
 		for _, domain := range strings.Split(*config.domain, ",") {
 			scanResults, err := scanDomain(domain, cmsRecords, config)
-			if (err == nil) {
+			if err == nil {
 				allResults = append(allResults, scanResults...)
 			} else {
 				fmt.Printf("[%s] Domain problem : %s\n", domain, err)
@@ -99,12 +99,12 @@ func main() {
 			semaphore <- true
 			go func(domain string) {
 				scanResults, err := scanDomain(domain, cmsRecords, config)
-				if (err == nil) {
+				if err == nil {
 					allResults = append(allResults, scanResults...)
 				} else {
 					fmt.Printf("[%s] Domain problem : %s\n", domain, err)
 				}
-				<- semaphore
+				<-semaphore
 				wg.Done()
 			}(domainsScanner.Text())
 		}
@@ -113,10 +113,10 @@ func main() {
 
 	printResults(allResults)
 
-	if (*config.outputFilePath != "") {
+	if *config.outputFilePath != "" {
 		writeResultsToCsv(allResults, *config.outputFilePath)
 		Info("Results saved to: " + *config.outputFilePath)
-	}	
+	}
 }
 
 //panicOnError function as a generic check for error function
@@ -243,11 +243,11 @@ func herokuCreate(domain string, config Configuration) (bool, error) {
 //to properly figure out if there are any dead DNS records
 func scanDomain(domain string, cmsRecords []*CMS, config Configuration) ([]DomainScan, error) {
 	cname, err := getCnameForDomain(domain)
-	if (err != nil) {
+	if err != nil {
 		return nil, err
 	} else {
 		scanResults := checkCnameAgainstProviders(domain, cname, cmsRecords, config)
-		if (len(scanResults) == 0) {
+		if len(scanResults) == 0 {
 			err = errors.New(fmt.Sprintf("Cname [%s] found but could not determine provider", cname))
 		}
 		return scanResults, err
@@ -262,11 +262,11 @@ func getCnameForDomain(domain string) (string, error) {
 	err := cmd.Run()
 
 	cname := strings.TrimSpace(out.String())
-	if (err != nil) {
+	if err != nil {
 		return "", err
-	} else if (len(errorOutput.String()) > 0) {
+	} else if len(errorOutput.String()) > 0 {
 		return "", errors.New(errorOutput.String())
-	} else if (len(cname) == 0) {
+	} else if len(cname) == 0 {
 		return "", errors.New("Cname not found")
 	}
 	return cname, nil
@@ -276,11 +276,11 @@ func getCnameForDomain(domain string) (string, error) {
 //from the dig command against the current domain matches the CNAME for that data provider
 //if it matches the CNAME, we need to now check if it matches the string for that data provider
 //So, we curl it and see if it matches. At this point, we know its vulnerable
-func checkCnameAgainstProviders(domain string, cname string, cmsRecords []*CMS, config Configuration) ([]DomainScan) {
+func checkCnameAgainstProviders(domain string, cname string, cmsRecords []*CMS, config Configuration) []DomainScan {
 	transport := &http.Transport{
-		Dial: (&net.Dialer{ Timeout: 10 * time.Second }).Dial,
+		Dial:                (&net.Dialer{Timeout: 10 * time.Second}).Dial,
 		TLSHandshakeTimeout: 10 * time.Second,
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+		TLSClientConfig:     &tls.Config{InsecureSkipVerify: true}}
 
 	client := &http.Client{Transport: transport, Timeout: time.Duration(10 * time.Second)}
 	var scanResults []DomainScan
@@ -289,9 +289,9 @@ func checkCnameAgainstProviders(domain string, cname string, cmsRecords []*CMS, 
 		usesprovider, _ := regexp.MatchString(cmsRecord.CName, cname)
 		if usesprovider {
 			scanResult := evaluateDomainProvider(domain, cname, cmsRecord, client)
-			if (*config.takeOver && scanResult.IsVulnerable) {
+			if *config.takeOver && scanResult.IsVulnerable {
 				isTakenOver, err := takeOverSub(scanResult.Domain, scanResult.Provider, config)
-				if (err != nil) {
+				if err != nil {
 					scanResult.Response = err.Error()
 				}
 				scanResult.IsTakenOver = isTakenOver
@@ -308,9 +308,9 @@ func checkCnameAgainstProviders(domain string, cname string, cmsRecords []*CMS, 
 //So, if there is a CNAME match for heroku and can't curl it, we will assume its vulnerable
 //if its not heroku, we will try to curl and regex match the string obtained in the response with
 //the string specified in the data providers file to see if its vulnerable or not
-func evaluateDomainProvider(domain string, cname string, cmsRecord *CMS, client *http.Client) (DomainScan) {
-	scanResult := DomainScan{ Domain: domain, Cname: cname, 
-		IsTakenOver: false, IsVulnerable: false, Provider : cmsRecord.Name }
+func evaluateDomainProvider(domain string, cname string, cmsRecord *CMS, client *http.Client) DomainScan {
+	scanResult := DomainScan{Domain: domain, Cname: cname,
+		IsTakenOver: false, IsVulnerable: false, Provider: cmsRecord.Name}
 	protocol := "https://"
 	if cmsRecord.OverHTTP == "true" {
 		protocol = "http://"
@@ -325,19 +325,21 @@ func evaluateDomainProvider(domain string, cname string, cmsRecord *CMS, client 
 		scanResult.Response = err.Error()
 	} else if err == nil {
 		text, err := ioutil.ReadAll(response.Body)
-		if (err != nil) {
-			scanResult.Response = err.Error()	
+		if err != nil {
+			scanResult.Response = err.Error()
 		} else {
 			scanResult.IsVulnerable, err = regexp.MatchString(cmsRecord.String, string(text))
-			if (err != nil) {
+			if err != nil {
 				scanResult.Response = err.Error()
+			} else {
+				scanResult.Response = cmsRecord.String
 			}
 		}
 	}
 	return scanResult
 }
 
-func loadProviders(recordsFilePath string) ([]*CMS) {
+func loadProviders(recordsFilePath string) []*CMS {
 	clientsFile, err := os.OpenFile(recordsFilePath, os.O_RDWR|os.O_CREATE, os.ModePerm)
 	panicOnError(err)
 	defer clientsFile.Close()
@@ -360,13 +362,13 @@ func writeResultsToCsv(scanResults []DomainScan, outputFilePath string) {
 func printResults(scanResults []DomainScan) {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Domain", "Cname", "Provider", "Vulnerable", "Taken Over", "Response"})
-	
+
 	for _, scanResult := range scanResults {
-		if ((len(scanResult.Cname) > 0 && len(scanResult.Provider) > 0) || len(scanResult.Response) > 0) {
-			table.Append([]string{scanResult.Domain, scanResult.Cname, scanResult.Provider, 
-				strconv.FormatBool(scanResult.IsVulnerable), 
+		if (len(scanResult.Cname) > 0 && len(scanResult.Provider) > 0) || len(scanResult.Response) > 0 {
+			table.Append([]string{scanResult.Domain, scanResult.Cname, scanResult.Provider,
+				strconv.FormatBool(scanResult.IsVulnerable),
 				strconv.FormatBool(scanResult.IsTakenOver),
-				scanResult.Response });
+				scanResult.Response})
 		}
 	}
 	table.Render()
