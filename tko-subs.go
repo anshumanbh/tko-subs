@@ -256,7 +256,7 @@ func scanDomain(domain string, cmsRecords []*CMS, config Configuration) ([]Domai
 
 func getCnameForDomain(domain string) (string, error) {
 	var out, errorOutput bytes.Buffer
-	cmd := exec.Command("dig", "CNAME", domain, "+short")
+	cmd := exec.Command("dig", "@8.8.8.8", "CNAME", domain, "+short")
 	cmd.Stdout = &out
 	cmd.Stderr = &errorOutput
 	err := cmd.Run()
