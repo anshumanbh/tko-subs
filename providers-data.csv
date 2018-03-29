@@ -9,12 +9,14 @@ shopify,myshopify.com,Only one step left!,false
 shopify,myshopify.com,"Sorry, this shop is currently unavailable.",false
 instapage,pageserve.co,You've Discovered A Missing Link. Our Apologies!,false
 desk,desk.com,Please try again or try Desk.com free for 14 days.,false
+desk,desk.com,We Couldn't Find That Page,false
 tictail,tictail.com,Building a brand of your own?,true
 campaignmonitor,createsend.com,Double check the URL,false
 cargocollective,cargocollective.com,404 Not Found,false
 statuspage,statuspage.io,Better Status Communication,false
 statuspage,statuspage.io,You are being redirected,false
 amazonaws,amazonaws.com,NoSuchBucket,false
+amazonaws,amazonaws.com,The specified bucket does not exist,false
 cloudfront,cloudfront.net,The request could not be satisfied,false
 squarespace,squarespace.com,is not available,false
 squarespace,squarespace.com,Website Expired,false
@@ -42,3 +44,4 @@ wordpress,wordpress,Do you want to register *.wordpress.com?,false
 mashery,mashery,Unrecognized domain,false
 bitbucket,bitbucket.io,Repository not found,true
 helpscout,helpscoutdocs.com,No settings were found for this company:,false
+jetbrains,myjetbrains.com,is not a registered InCloud YouTrack,false
