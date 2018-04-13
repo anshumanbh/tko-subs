@@ -45,3 +45,4 @@ mashery,mashery,Unrecognized domain,false
 bitbucket,bitbucket.io,Repository not found,true
 helpscout,helpscoutdocs.com,No settings were found for this company:,false
 jetbrains,myjetbrains.com,is not a registered InCloud YouTrack,false
+azure,azurewebsites.net,404 Web Site not found,false
