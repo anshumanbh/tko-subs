@@ -1,7 +1,10 @@
 # tko-subs
 
 This tool allows:
-* To check whether a subdomain has a dangling CNAME pointing to a CMS provider (Heroku, Github, Shopify, Amazon S3, Amazon CloudFront, etc.) that can be taken over.
+* To check whether a subdomain can be taken over because it has:
+	* a dangling CNAME pointing to a CMS provider (Heroku, Github, Shopify, Amazon S3, Amazon CloudFront, etc.) that can be taken over.
+	* a dangling CNAME pointing to a non-existent domain name
+	* one or more wrong/typoed NS records pointing to a nameserver that can be taken over by an attacker to gain control of the subdomain's DNS records
 
 * To actually take over those subdomain by providing a flag `-takeover`. Currently, take over is only supported for Github Pages and Heroku Apps and by default the take over functionality is off.
 
@@ -74,13 +77,15 @@ Domain,CNAME,Provider,IsVulnerable,IsTakenOver,Response
 * IsTakenOver: Whether the domain was taken over or not (true/false)
 * Response: The message that the subdomain was checked against
 
+If a dead DNS record is found, `Provider` is left empty.
+If a misbehaving nameserver is found, `Provider` and `CNAME` are left empty
 
 ### What is going on under the hood?
 
 This will iterate over all the domains (concurrently using GoRoutines) in the `subdomains.txt` file and:
-* See if they have dangling CNAME records aka dead DNS records by using `dig`.
-* If they have dead DNS records, it tries to curl them and get back a response and then try to see if that response matches any of the data provider strings mentioned in the [providers-data.csv](providers-data.csv) file.
-	* For some cases like Heroku apps, if it has a dead DNS record and can't curl it, it will assume its vulnerable. Heroku does not respond back with anything if the subdomains are removed from user accounts so curl'ing it doesn't fetch anything (unlike other CMS providers) but the dead record still exists and can be taken over so we want to know about them.
+* See if they have a misbehaving authoritative nameserver; if they do, we mark that domain as vulnerable.
+* See if they have dangling CNAME records aka dead DNS records; if they do we mark that domain as vulnerable.
+* If a subdomain passes these two tests, it tries to curl them and get back a response and then try to see if that response matches any of the data provider strings mentioned in the [providers-data.csv](providers-data.csv) file.
 * If the response matches, we mark that domain as vulnerable.
 * Next, depending upon whether the `takeover` flag is mentioned or not, it will try to take over that vulnerable subdomain.
 * For example, to takeover a Github Page, the code will:
