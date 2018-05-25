@@ -238,6 +238,13 @@ func herokuCreate(domain string, config Configuration) (bool, error) {
 
 //scanDomain function to scan for each domain being read from the domains file
 func scanDomain(domain string, cmsRecords []*CMS, config Configuration) ([]DomainScan, error) {
+	if misbehavingNs, err := checkRefusedServfail(domain); misbehavingNs {
+		scanResult := DomainScan{Domain: domain, IsVulnerable: true, IsTakenOver: false, Response: "REFUSED/SERVFAIL DNS status"}
+		return []DomainScan{scanResult}, nil
+	} else if err != nil {
+		return nil, err
+	}
+
 	cname, err := getCnameForDomain(domain)
 	if err != nil {
 		return nil, err
@@ -296,6 +303,21 @@ func getCnameForDomain(domain string) (string, error) {
 	return "", errors.New("Cname not found")
 }
 
+func checkRefusedServfail(domain string) (bool, error) {
+	client := dns.Client{}
+	message := dns.Msg{}
+
+	message.SetQuestion(dns.Fqdn(domain), dns.TypeA)
+	r, _, err := client.Exchange(&message, "8.8.8.8:53")
+	if err != nil {
+		return false, err
+	}
+	if r.Rcode == dns.RcodeServerFailure || r.Rcode == dns.RcodeRefused {
+		return true, nil
+	}
+	return false, nil
+}
+
 //Now, for each entry in the data providers file, we will check to see if the output
 //from the dig command against the current domain matches the CNAME for that data provider
 //if it matches the CNAME, we need to now check if it matches the string for that data provider
@@ -338,8 +360,6 @@ func evaluateDomainProvider(domain string, cname string, cmsRecord *CMS, client 
 	}
 	response, err := client.Get(protocol + scanResult.Domain)
 
-	// TODO: Use a DNS query here instead of an HTTP request and check for NXDOMAIN status for cname
-	// HTTP requests can fail for a lot of reasons other than non-existent domains
 	if err != nil {
 		scanResult.IsVulnerable = true
 		scanResult.Response = "Can't CURL it but dig shows a dead DNS record"
