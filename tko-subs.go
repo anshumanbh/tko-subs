@@ -238,6 +238,7 @@ func herokuCreate(domain string, config Configuration) (bool, error) {
 
 //scanDomain function to scan for each domain being read from the domains file
 func scanDomain(domain string, cmsRecords []*CMS, config Configuration) ([]DomainScan, error) {
+	// Check if the domain has a nameserver that returns servfail/refused
 	if misbehavingNs, err := checkRefusedServfail(domain); misbehavingNs {
 		scanResult := DomainScan{Domain: domain, IsVulnerable: true, IsTakenOver: false, Response: "REFUSED/SERVFAIL DNS status"}
 		return []DomainScan{scanResult}, nil
@@ -250,6 +251,7 @@ func scanDomain(domain string, cmsRecords []*CMS, config Configuration) ([]Domai
 		return nil, err
 	}
 
+	// Check if the domain has a dead DNS record, as in it's pointing to a CNAME that doesn't exist
 	if exists, err := resolves(cname); !exists {
 		scanResult := DomainScan{Domain: domain, Cname: cname, IsVulnerable: true, IsTakenOver: false, Response: "Dead DNS record"}
 		return []DomainScan{scanResult}, nil
@@ -303,9 +305,14 @@ func getCnameForDomain(domain string) (string, error) {
 	return "", errors.New("Cname not found")
 }
 
+// function checkRefuedServfail checks if a trused public resolver (8.8.8.8 is used here)
+// returns a servfail/refused response for the domain
 func checkRefusedServfail(domain string) (bool, error) {
 	client := dns.Client{}
 	message := dns.Msg{}
+
+	// TODO: get the domain's authoritative nameservers and try them one by one to catch cases where
+	// not all nameservers are misbehaving
 
 	message.SetQuestion(dns.Fqdn(domain), dns.TypeA)
 	r, _, err := client.Exchange(&message, "8.8.8.8:53")
