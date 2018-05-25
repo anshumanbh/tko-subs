@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -13,7 +12,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
@@ -25,6 +23,7 @@ import (
 	heroku "github.com/bgentry/heroku-go"
 	"github.com/gocarina/gocsv"
 	"github.com/google/go-github/github"
+	"github.com/miekg/dns"
 	"github.com/olekukonko/tablewriter"
 )
 
@@ -255,21 +254,21 @@ func scanDomain(domain string, cmsRecords []*CMS, config Configuration) ([]Domai
 }
 
 func getCnameForDomain(domain string) (string, error) {
-	var out, errorOutput bytes.Buffer
-	cmd := exec.Command("dig", "@8.8.8.8", "CNAME", domain, "+short")
-	cmd.Stdout = &out
-	cmd.Stderr = &errorOutput
-	err := cmd.Run()
+	c := dns.Client{}
+	m := dns.Msg{}
 
-	cname := strings.TrimSpace(out.String())
+	m.SetQuestion(dns.Fqdn(domain), dns.TypeCNAME)
+	r, _, err := c.Exchange(&m, "8.8.8.8:53")
 	if err != nil {
 		return "", err
-	} else if len(errorOutput.String()) > 0 {
-		return "", errors.New(errorOutput.String())
-	} else if len(cname) == 0 {
-		return "", errors.New("Cname not found")
 	}
-	return cname, nil
+
+	if len(r.Answer) > 0 {
+		record := r.Answer[0].(*dns.CNAME)
+		cname := record.Target
+		return cname, nil
+	}
+	return "", errors.New("Cname not found")
 }
 
 //Now, for each entry in the data providers file, we will check to see if the output
