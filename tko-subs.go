@@ -241,13 +241,36 @@ func scanDomain(domain string, cmsRecords []*CMS, config Configuration) ([]Domai
 	cname, err := getCnameForDomain(domain)
 	if err != nil {
 		return nil, err
-	} else {
-		scanResults := checkCnameAgainstProviders(domain, cname, cmsRecords, config)
-		if len(scanResults) == 0 {
-			err = errors.New(fmt.Sprintf("Cname [%s] found but could not determine provider", cname))
-		}
-		return scanResults, err
 	}
+
+	if exists, err := resolves(cname); !exists {
+		scanResult := DomainScan{Domain: domain, Cname: cname, IsVulnerable: true, IsTakenOver: false, Response: "Dead DNS record"}
+		return []DomainScan{scanResult}, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	scanResults := checkCnameAgainstProviders(domain, cname, cmsRecords, config)
+	if len(scanResults) == 0 {
+		err = errors.New(fmt.Sprintf("Cname [%s] found but could not determine provider", cname))
+	}
+	return scanResults, err
+}
+
+// resolves function returns false if NXDOMAIN, and true otherwise
+func resolves(domain string) (bool, error) {
+	client := dns.Client{}
+	message := dns.Msg{}
+
+	message.SetQuestion(dns.Fqdn(domain), dns.TypeA)
+	r, _, err := client.Exchange(&message, "8.8.8.8:53")
+	if err != nil {
+		return false, err
+	}
+	if r.Rcode == dns.RcodeNameError {
+		return false, nil
+	}
+	return true, nil
 }
 
 // getCnameForDomain function to lookup CNAME records of a domain
@@ -303,11 +326,8 @@ func checkCnameAgainstProviders(domain string, cname string, cmsRecords []*CMS, 
 	return scanResults
 }
 
-//Heroku behaves slightly different. Even if there is a dead DNS record for Heroku
-//it would not resolve using host and you can't curl the website unlike other CMS
-//but you will find it using dig
-//So, if there is a CNAME match for heroku and can't curl it, we will assume its vulnerable
-//if its not heroku, we will try to curl and regex match the string obtained in the response with
+//If there is a CNAME and can't curl it, we will assume its vulnerable
+//If we can curl it, we will regex match the string obtained in the response with
 //the string specified in the data providers file to see if its vulnerable or not
 func evaluateDomainProvider(domain string, cname string, cmsRecord *CMS, client *http.Client) DomainScan {
 	scanResult := DomainScan{Domain: domain, Cname: cname,
@@ -316,14 +336,13 @@ func evaluateDomainProvider(domain string, cname string, cmsRecord *CMS, client 
 	if cmsRecord.OverHTTP == "true" {
 		protocol = "http://"
 	}
-
 	response, err := client.Get(protocol + scanResult.Domain)
 
-	if err != nil && cmsRecord.Name == "heroku" {
+	// TODO: Use a DNS query here instead of an HTTP request and check for NXDOMAIN status for cname
+	// HTTP requests can fail for a lot of reasons other than non-existent domains
+	if err != nil {
 		scanResult.IsVulnerable = true
 		scanResult.Response = "Can't CURL it but dig shows a dead DNS record"
-	} else if err != nil && cmsRecord.Name != "heroku" {
-		scanResult.Response = err.Error()
 	} else if err == nil {
 		text, err := ioutil.ReadAll(response.Body)
 		if err != nil {
