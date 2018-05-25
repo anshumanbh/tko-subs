@@ -237,9 +237,6 @@ func herokuCreate(domain string, config Configuration) (bool, error) {
 }
 
 //scanDomain function to scan for each domain being read from the domains file
-//Doing CNAME lookups using GOLANG's net package or for that matter just doing a host on a domain
-//does not necessarily let us know about any dead DNS records. So, we need to use dig CNAME <domain> +short
-//to properly figure out if there are any dead DNS records
 func scanDomain(domain string, cmsRecords []*CMS, config Configuration) ([]DomainScan, error) {
 	cname, err := getCnameForDomain(domain)
 	if err != nil {
@@ -253,6 +250,11 @@ func scanDomain(domain string, cmsRecords []*CMS, config Configuration) ([]Domai
 	}
 }
 
+// getCnameForDomain function to lookup CNAME records of a domain
+//
+// Doing CNAME lookups using GOLANG's net package or for that matter just doing a host on a domain
+// does not necessarily let us know about any dead DNS records. So, we need to read the raw DNS response
+// to properly figure out if there are any dead DNS records
 func getCnameForDomain(domain string) (string, error) {
 	c := dns.Client{}
 	m := dns.Msg{}
