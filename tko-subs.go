@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/publicsuffix"
 	"golang.org/x/oauth2"
 
 	heroku "github.com/bgentry/heroku-go"
@@ -130,6 +131,11 @@ func Info(format string, args ...interface{}) {
 	fmt.Printf("\x1b[34;1m%s\x1b[0m\n", fmt.Sprintf(format, args...))
 }
 
+// unFqdn removes the trailing from a FQDN
+func unFqdn(domain string) string {
+	return strings.TrimSuffix(domain, ".")
+}
+
 //takeOverSub function to decide what to do depending upon the CMS
 func takeOverSub(domain string, provider string, config Configuration) (bool, error) {
 	switch provider {
@@ -239,7 +245,7 @@ func herokuCreate(domain string, config Configuration) (bool, error) {
 //scanDomain function to scan for each domain being read from the domains file
 func scanDomain(domain string, cmsRecords []*CMS, config Configuration) ([]DomainScan, error) {
 	// Check if the domain has a nameserver that returns servfail/refused
-	if misbehavingNs, err := checkRefusedServfail(domain); misbehavingNs {
+	if misbehavingNs, err := authorityReturnRefusedOrServfail(domain); misbehavingNs {
 		scanResult := DomainScan{Domain: domain, IsVulnerable: true, IsTakenOver: false, Response: "REFUSED/SERVFAIL DNS status"}
 		return []DomainScan{scanResult}, nil
 	} else if err != nil {
@@ -305,17 +311,95 @@ func getCnameForDomain(domain string) (string, error) {
 	return "", errors.New("Cname not found")
 }
 
-// function checkRefuedServfail checks if a trused public resolver (8.8.8.8 is used here)
-// returns a servfail/refused response for the domain
-func checkRefusedServfail(domain string) (bool, error) {
+// function parseNS to parse NS records (found in answer to NS query or in the authority section) into a list of record values
+func parseNS(records []dns.RR) []string {
+	var recordData []string
+	for _, ans := range records {
+		if ans.Header().Rrtype == dns.TypeNS {
+			record := ans.(*dns.NS)
+			recordData = append(recordData, record.Ns)
+		} else if ans.Header().Rrtype == dns.TypeSOA {
+			record := ans.(*dns.SOA)
+			recordData = append(recordData, record.Ns)
+		}
+	}
+	return recordData
+}
+
+// getAuthorityForDomain function to lookup the authoritative nameservers of a domain
+func getAuthorityForDomain(domain string, nameserver string) ([]string, error) {
+	c := dns.Client{}
+	m := dns.Msg{}
+
+	domain = dns.Fqdn(domain)
+
+	m.SetQuestion(domain, dns.TypeNS)
+	r, _, err := c.Exchange(&m, nameserver+":53")
+	if err != nil {
+		return nil, err
+	}
+
+	var recordData []string
+	if r.Rcode == dns.RcodeSuccess {
+		if len(r.Answer) > 0 {
+			recordData = parseNS(r.Answer)
+		} else {
+			// if no NS records are found, fallback to using the authority section
+			recordData = parseNS(r.Ns)
+		}
+	} else {
+		return nil, fmt.Errorf("failed to get authoritative servers; Rcode: %d", r.Rcode)
+	}
+
+	return recordData, nil
+}
+
+// authorityReturnRefusedOrServfail returns true if at least one of the domain's authoritative nameservers
+// returns a REFUSED/SERVFAIL response when queried for the domain
+func authorityReturnRefusedOrServfail(domain string) (bool, error) {
+	// EffectiveTLDPlusOne considers the root domain "." an additional TLD
+	// so for "example.com.", it returns "com."
+	// but for "example.com" (without trailing "."), it returns "example.com"
+	// so we use unFqdn() to remove the trailing dot
+	apex, err := publicsuffix.EffectiveTLDPlusOne(unFqdn(domain))
+	if err != nil {
+		return false, err
+	}
+
+	apexAuthority, err := getAuthorityForDomain(apex, "8.8.8.8")
+	if err != nil {
+		return false, err
+	}
+	if len(apexAuthority) == 0 {
+		return false, fmt.Errorf("couldn't find the apex's nameservers")
+	}
+
+	domainAuthority, err := getAuthorityForDomain(domain, apexAuthority[0])
+	if err != nil {
+		return false, err
+	}
+
+	for _, nameserver := range domainAuthority {
+		vulnerable, err := nameserverReturnsRefusedOrServfail(domain, nameserver)
+		if err != nil {
+			// TODO: report this kind of error to the caller?
+			continue
+		}
+		if vulnerable {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// nameserverReturnsRefusedOrServfail returns true if the given nameserver
+// returns a REFUSED/SERVFAIL response when queried for the domain
+func nameserverReturnsRefusedOrServfail(domain string, nameserver string) (bool, error) {
 	client := dns.Client{}
 	message := dns.Msg{}
 
-	// TODO: get the domain's authoritative nameservers and try them one by one to catch cases where
-	// not all nameservers are misbehaving
-
 	message.SetQuestion(dns.Fqdn(domain), dns.TypeA)
-	r, _, err := client.Exchange(&message, "8.8.8.8:53")
+	r, _, err := client.Exchange(&message, nameserver+":53")
 	if err != nil {
 		return false, err
 	}
