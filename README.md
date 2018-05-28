@@ -114,6 +114,11 @@ This will iterate over all the domains (concurrently using GoRoutines) in the `s
 
 ### Changelog
 
+`5/27`
+* Added new Dockerfile reducing the size of the image
+* Added sample domains.txt file to test against
+* mhmdiaa added the logic for dead DNS takeovers. Updated documentation. Thanks a lot!
+
 `11/6`
 * high-stakes issues a PR with a bunch of new code that fixes a few bugs and makes the code cleaner
 
