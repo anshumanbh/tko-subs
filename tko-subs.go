@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -13,18 +12,19 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"golang.org/x/net/publicsuffix"
 	"golang.org/x/oauth2"
 
 	heroku "github.com/bgentry/heroku-go"
 	"github.com/gocarina/gocsv"
 	"github.com/google/go-github/github"
+	"github.com/miekg/dns"
 	"github.com/olekukonko/tablewriter"
 )
 
@@ -129,6 +129,11 @@ func panicOnError(e error) {
 //Info function to print pretty output
 func Info(format string, args ...interface{}) {
 	fmt.Printf("\x1b[34;1m%s\x1b[0m\n", fmt.Sprintf(format, args...))
+}
+
+// unFqdn removes the trailing from a FQDN
+func unFqdn(domain string) string {
+	return strings.TrimSuffix(domain, ".")
 }
 
 //takeOverSub function to decide what to do depending upon the CMS
@@ -238,38 +243,170 @@ func herokuCreate(domain string, config Configuration) (bool, error) {
 }
 
 //scanDomain function to scan for each domain being read from the domains file
-//Doing CNAME lookups using GOLANG's net package or for that matter just doing a host on a domain
-//does not necessarily let us know about any dead DNS records. So, we need to use dig CNAME <domain> +short
-//to properly figure out if there are any dead DNS records
 func scanDomain(domain string, cmsRecords []*CMS, config Configuration) ([]DomainScan, error) {
+	// Check if the domain has a nameserver that returns servfail/refused
+	if misbehavingNs, err := authorityReturnRefusedOrServfail(domain); misbehavingNs {
+		scanResult := DomainScan{Domain: domain, IsVulnerable: true, IsTakenOver: false, Response: "REFUSED/SERVFAIL DNS status"}
+		return []DomainScan{scanResult}, nil
+	} else if err != nil {
+		return nil, err
+	}
+
 	cname, err := getCnameForDomain(domain)
 	if err != nil {
 		return nil, err
-	} else {
-		scanResults := checkCnameAgainstProviders(domain, cname, cmsRecords, config)
-		if len(scanResults) == 0 {
-			err = errors.New(fmt.Sprintf("Cname [%s] found but could not determine provider", cname))
-		}
-		return scanResults, err
 	}
+
+	// Check if the domain has a dead DNS record, as in it's pointing to a CNAME that doesn't exist
+	if exists, err := resolves(cname); !exists {
+		scanResult := DomainScan{Domain: domain, Cname: cname, IsVulnerable: true, IsTakenOver: false, Response: "Dead DNS record"}
+		return []DomainScan{scanResult}, nil
+	} else if err != nil {
+		return nil, err
+	}
+
+	scanResults := checkCnameAgainstProviders(domain, cname, cmsRecords, config)
+	if len(scanResults) == 0 {
+		err = errors.New(fmt.Sprintf("Cname [%s] found but could not determine provider", cname))
+	}
+	return scanResults, err
 }
 
-func getCnameForDomain(domain string) (string, error) {
-	var out, errorOutput bytes.Buffer
-	cmd := exec.Command("dig", "@8.8.8.8", "CNAME", domain, "+short")
-	cmd.Stdout = &out
-	cmd.Stderr = &errorOutput
-	err := cmd.Run()
+// resolves function returns false if NXDOMAIN, and true otherwise
+func resolves(domain string) (bool, error) {
+	client := dns.Client{}
+	message := dns.Msg{}
 
-	cname := strings.TrimSpace(out.String())
+	message.SetQuestion(dns.Fqdn(domain), dns.TypeA)
+	r, _, err := client.Exchange(&message, "8.8.8.8:53")
+	if err != nil {
+		return false, err
+	}
+	if r.Rcode == dns.RcodeNameError {
+		return false, nil
+	}
+	return true, nil
+}
+
+// getCnameForDomain function to lookup CNAME records of a domain
+//
+// Doing CNAME lookups using GOLANG's net package or for that matter just doing a host on a domain
+// does not necessarily let us know about any dead DNS records. So, we need to read the raw DNS response
+// to properly figure out if there are any dead DNS records
+func getCnameForDomain(domain string) (string, error) {
+	c := dns.Client{}
+	m := dns.Msg{}
+
+	m.SetQuestion(dns.Fqdn(domain), dns.TypeCNAME)
+	r, _, err := c.Exchange(&m, "8.8.8.8:53")
 	if err != nil {
 		return "", err
-	} else if len(errorOutput.String()) > 0 {
-		return "", errors.New(errorOutput.String())
-	} else if len(cname) == 0 {
-		return "", errors.New("Cname not found")
 	}
-	return cname, nil
+
+	if len(r.Answer) > 0 {
+		record := r.Answer[0].(*dns.CNAME)
+		cname := record.Target
+		return cname, nil
+	}
+	return "", errors.New("Cname not found")
+}
+
+// function parseNS to parse NS records (found in answer to NS query or in the authority section) into a list of record values
+func parseNS(records []dns.RR) []string {
+	var recordData []string
+	for _, ans := range records {
+		if ans.Header().Rrtype == dns.TypeNS {
+			record := ans.(*dns.NS)
+			recordData = append(recordData, record.Ns)
+		} else if ans.Header().Rrtype == dns.TypeSOA {
+			record := ans.(*dns.SOA)
+			recordData = append(recordData, record.Ns)
+		}
+	}
+	return recordData
+}
+
+// getAuthorityForDomain function to lookup the authoritative nameservers of a domain
+func getAuthorityForDomain(domain string, nameserver string) ([]string, error) {
+	c := dns.Client{}
+	m := dns.Msg{}
+
+	domain = dns.Fqdn(domain)
+
+	m.SetQuestion(domain, dns.TypeNS)
+	r, _, err := c.Exchange(&m, nameserver+":53")
+	if err != nil {
+		return nil, err
+	}
+
+	var recordData []string
+	if r.Rcode == dns.RcodeSuccess {
+		if len(r.Answer) > 0 {
+			recordData = parseNS(r.Answer)
+		} else {
+			// if no NS records are found, fallback to using the authority section
+			recordData = parseNS(r.Ns)
+		}
+	} else {
+		return nil, fmt.Errorf("failed to get authoritative servers; Rcode: %d", r.Rcode)
+	}
+
+	return recordData, nil
+}
+
+// authorityReturnRefusedOrServfail returns true if at least one of the domain's authoritative nameservers
+// returns a REFUSED/SERVFAIL response when queried for the domain
+func authorityReturnRefusedOrServfail(domain string) (bool, error) {
+	// EffectiveTLDPlusOne considers the root domain "." an additional TLD
+	// so for "example.com.", it returns "com."
+	// but for "example.com" (without trailing "."), it returns "example.com"
+	// so we use unFqdn() to remove the trailing dot
+	apex, err := publicsuffix.EffectiveTLDPlusOne(unFqdn(domain))
+	if err != nil {
+		return false, err
+	}
+
+	apexAuthority, err := getAuthorityForDomain(apex, "8.8.8.8")
+	if err != nil {
+		return false, err
+	}
+	if len(apexAuthority) == 0 {
+		return false, fmt.Errorf("couldn't find the apex's nameservers")
+	}
+
+	domainAuthority, err := getAuthorityForDomain(domain, apexAuthority[0])
+	if err != nil {
+		return false, err
+	}
+
+	for _, nameserver := range domainAuthority {
+		vulnerable, err := nameserverReturnsRefusedOrServfail(domain, nameserver)
+		if err != nil {
+			// TODO: report this kind of error to the caller?
+			continue
+		}
+		if vulnerable {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// nameserverReturnsRefusedOrServfail returns true if the given nameserver
+// returns a REFUSED/SERVFAIL response when queried for the domain
+func nameserverReturnsRefusedOrServfail(domain string, nameserver string) (bool, error) {
+	client := dns.Client{}
+	message := dns.Msg{}
+
+	message.SetQuestion(dns.Fqdn(domain), dns.TypeA)
+	r, _, err := client.Exchange(&message, nameserver+":53")
+	if err != nil {
+		return false, err
+	}
+	if r.Rcode == dns.RcodeServerFailure || r.Rcode == dns.RcodeRefused {
+		return true, nil
+	}
+	return false, nil
 }
 
 //Now, for each entry in the data providers file, we will check to see if the output
@@ -302,11 +439,8 @@ func checkCnameAgainstProviders(domain string, cname string, cmsRecords []*CMS, 
 	return scanResults
 }
 
-//Heroku behaves slightly different. Even if there is a dead DNS record for Heroku
-//it would not resolve using host and you can't curl the website unlike other CMS
-//but you will find it using dig
-//So, if there is a CNAME match for heroku and can't curl it, we will assume its vulnerable
-//if its not heroku, we will try to curl and regex match the string obtained in the response with
+//If there is a CNAME and can't curl it, we will assume its vulnerable
+//If we can curl it, we will regex match the string obtained in the response with
 //the string specified in the data providers file to see if its vulnerable or not
 func evaluateDomainProvider(domain string, cname string, cmsRecord *CMS, client *http.Client) DomainScan {
 	scanResult := DomainScan{Domain: domain, Cname: cname,
@@ -315,14 +449,11 @@ func evaluateDomainProvider(domain string, cname string, cmsRecord *CMS, client 
 	if cmsRecord.OverHTTP == "true" {
 		protocol = "http://"
 	}
-
 	response, err := client.Get(protocol + scanResult.Domain)
 
-	if err != nil && cmsRecord.Name == "heroku" {
+	if err != nil {
 		scanResult.IsVulnerable = true
 		scanResult.Response = "Can't CURL it but dig shows a dead DNS record"
-	} else if err != nil && cmsRecord.Name != "heroku" {
-		scanResult.Response = err.Error()
 	} else if err == nil {
 		text, err := ioutil.ReadAll(response.Body)
 		if err != nil {
