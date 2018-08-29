@@ -30,6 +30,16 @@ The next thing we need to do is to get the following information:
 
 NOTE - You only need these values if you want to take over subdomains. By default, that's not required.
 
+Required Go Packages to build.
+
+```
+go get github.com/bgentry/heroku-go
+go get github.com/gocarina/gocsv
+go get github.com/google/go-github/github
+go get github.com/olekukonko/tablewriter
+go get golang.org/x/net/publicsuffix
+go get golang.org/x/oauth2
+```
 
 ### How to run?
 
