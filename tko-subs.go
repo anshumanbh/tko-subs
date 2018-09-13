@@ -423,18 +423,16 @@ func checkCnameAgainstProviders(domain string, cname string, cmsRecords []*CMS, 
 	var scanResults []DomainScan
 
 	for _, cmsRecord := range cmsRecords {
-		usesprovider, _ := regexp.MatchString(cmsRecord.CName, cname)
-		if usesprovider {
-			scanResult := evaluateDomainProvider(domain, cname, cmsRecord, client)
-			if *config.takeOver && scanResult.IsVulnerable {
-				isTakenOver, err := takeOverSub(scanResult.Domain, scanResult.Provider, config)
-				if err != nil {
-					scanResult.Response = err.Error()
-				}
-				scanResult.IsTakenOver = isTakenOver
+		// usesprovider, _ := regexp.MatchString(cmsRecord.CName, cname)
+		scanResult := evaluateDomainProvider(domain, cname, cmsRecord, client)
+		if *config.takeOver && scanResult.IsVulnerable {
+			isTakenOver, err := takeOverSub(scanResult.Domain, scanResult.Provider, config)
+			if err != nil {
+				scanResult.Response = err.Error()
 			}
-			scanResults = append(scanResults, scanResult)
+			scanResult.IsTakenOver = isTakenOver
 		}
+		scanResults = append(scanResults, scanResult)
 	}
 	return scanResults
 }
