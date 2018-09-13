@@ -85,7 +85,7 @@ func main() {
 		}
 	} else {
 		domainsFile, err := os.Open(*config.domainsFilePath)
-		panicOnError(err)
+		showUsageOnError(err)
 		defer domainsFile.Close()
 		domainsScanner := bufio.NewScanner(domainsFile)
 
@@ -123,6 +123,15 @@ func main() {
 func panicOnError(e error) {
 	if e != nil {
 		panic(e)
+	}
+}
+
+//showUsageOnError function as a generic check for error when panic is too agressive
+func showUsageOnError(e error) {
+	if e != nil {
+		fmt.Printf("Error: %s\n", e)
+		flag.Usage()
+		os.Exit(1)
 	}
 }
 
@@ -494,12 +503,12 @@ func evaluateDomainProvider(domain string, cname string, cmsRecord *CMS, client 
 
 func loadProviders(recordsFilePath string) []*CMS {
 	clientsFile, err := os.OpenFile(recordsFilePath, os.O_RDWR|os.O_CREATE, os.ModePerm)
-	panicOnError(err)
+	showUsageOnError(err)
 	defer clientsFile.Close()
 
 	cmsRecords := []*CMS{}
 	err = gocsv.UnmarshalFile(clientsFile, &cmsRecords)
-	panicOnError(err)
+	showUsageOnError(err)
 	return cmsRecords
 }
 
