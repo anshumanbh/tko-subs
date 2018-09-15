@@ -85,7 +85,7 @@ func main() {
 		}
 	} else {
 		domainsFile, err := os.Open(*config.domainsFilePath)
-		panicOnError(err)
+		showUsageOnError(err)
 		defer domainsFile.Close()
 		domainsScanner := bufio.NewScanner(domainsFile)
 
@@ -123,6 +123,15 @@ func main() {
 func panicOnError(e error) {
 	if e != nil {
 		panic(e)
+	}
+}
+
+//showUsageOnError function as a generic check for error when panic is too agressive
+func showUsageOnError(e error) {
+	if e != nil {
+		fmt.Printf("Error: %s\n", e)
+		flag.Usage()
+		os.Exit(1)
 	}
 }
 
@@ -258,7 +267,7 @@ func scanDomain(domain string, cmsRecords []*CMS, config Configuration) ([]Domai
 	}
 
 	// Check if the domain has a dead DNS record, as in it's pointing to a CNAME that doesn't exist
-	if exists, err := resolves(cname); !exists {
+	if exists, err := apexResolves(cname); !exists {
 		scanResult := DomainScan{Domain: domain, Cname: cname, IsVulnerable: true, IsTakenOver: false, Response: "Dead DNS record"}
 		return []DomainScan{scanResult}, nil
 	} else if err != nil {
@@ -270,6 +279,16 @@ func scanDomain(domain string, cmsRecords []*CMS, config Configuration) ([]Domai
 		err = errors.New(fmt.Sprintf("Cname [%s] found but could not determine provider", cname))
 	}
 	return scanResults, err
+}
+
+// apexResolves function returns false if the domain's apex returns NXDOMAIN, and true otherwise
+func apexResolves(domain string) (bool, error) {
+	apex, err := publicsuffix.EffectiveTLDPlusOne(unFqdn(domain))
+	exists, err := resolves(apex)
+	if err != nil {
+		return false, err
+	}
+	return exists, nil
 }
 
 // resolves function returns false if NXDOMAIN, and true otherwise
@@ -288,8 +307,11 @@ func resolves(domain string) (bool, error) {
 	return true, nil
 }
 
-// getCnameForDomain function to lookup CNAME records of a domain
+// getCnameForDomain function to lookup the last CNAME record of a domain
 //
+// For exmaple, if you have a DNS chain that looks like this:
+// foo.example.com -> bar.example.com -> baz.example.com -> 1.2.3.4
+// getCnameForDomain will retrun baz.example.com
 // Doing CNAME lookups using GOLANG's net package or for that matter just doing a host on a domain
 // does not necessarily let us know about any dead DNS records. So, we need to read the raw DNS response
 // to properly figure out if there are any dead DNS records
@@ -301,14 +323,25 @@ func getCnameForDomain(domain string) (string, error) {
 	r, _, err := c.Exchange(&m, "8.8.8.8:53")
 	if err != nil {
 		return "", err
+	} else if len(r.Answer) == 0 {
+		return "", errors.New("Cname not found")
 	}
 
-	if len(r.Answer) > 0 {
-		record := r.Answer[0].(*dns.CNAME)
-		cname := record.Target
-		return cname, nil
+	record := r.Answer[len(r.Answer)-1].(*dns.CNAME)
+	lastCname := record.Target
+
+	for ok := true; ok; ok = len(r.Answer) > 0 {
+		record = r.Answer[len(r.Answer)-1].(*dns.CNAME)
+		lastCname = record.Target
+
+		m.SetQuestion(dns.Fqdn(lastCname), dns.TypeCNAME)
+		r, _, err = c.Exchange(&m, "8.8.8.8:53")
+		if err != nil {
+			break
+		}
 	}
-	return "", errors.New("Cname not found")
+
+	return lastCname, nil
 }
 
 // function parseNS to parse NS records (found in answer to NS query or in the authority section) into a list of record values
@@ -472,12 +505,12 @@ func evaluateDomainProvider(domain string, cname string, cmsRecord *CMS, client 
 
 func loadProviders(recordsFilePath string) []*CMS {
 	clientsFile, err := os.OpenFile(recordsFilePath, os.O_RDWR|os.O_CREATE, os.ModePerm)
-	panicOnError(err)
+	showUsageOnError(err)
 	defer clientsFile.Close()
 
 	cmsRecords := []*CMS{}
 	err = gocsv.UnmarshalFile(clientsFile, &cmsRecords)
-	panicOnError(err)
+	showUsageOnError(err)
 	return cmsRecords
 }
 
