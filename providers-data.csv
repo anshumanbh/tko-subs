@@ -8,8 +8,6 @@ tumblr,tumblr.com,Whatever you were looking for doesn't currently exist at this 
 shopify,myshopify.com,Only one step left!,false
 shopify,myshopify.com,"Sorry, this shop is currently unavailable.",false
 instapage,pageserve.co,You've Discovered A Missing Link. Our Apologies!,false
-desk,desk.com,Please try again or try Desk.com free for 14 days.,false
-desk,desk.com,We Couldn't Find That Page,false
 tictail,tictail.com,Building a brand of your own?,true
 campaignmonitor,createsend.com,Double check the URL,false
 cargocollective,cargocollective.com,404 Not Found,false
@@ -23,7 +21,6 @@ acquia,acquia.com,If you are an Acquia Cloud customer and expect to see your sit
 fastly,fastly.net,Please check that this domain has been added to a service,false
 fastly,fastly.net,Fastly error: unknown domain:,false
 pantheon,pantheonsite.io,The gods are wise,false
-zendesk,zendesk.com,Help Center Closed,false
 uservoice,uservoice.com,This UserVoice subdomain is currently available!,false
 ghost,ghost.io,The thing you were looking for is no longer here,false
 pingdom,stats.pingdom.com,pingdom,false
@@ -38,3 +35,4 @@ bitbucket,bitbucket.io,Repository not found,true
 helpscout,helpscoutdocs.com,No settings were found for this company:,false
 jetbrains,myjetbrains.com,is not a registered InCloud YouTrack,false
 azure,azurewebsites.net,404 Web Site not found,false
+readme,readme.io,"Project doesnt exist... yet!",false
