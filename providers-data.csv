@@ -36,3 +36,8 @@ azure,azurewebsites.net,404 Web Site not found,false
 readme,readme.io,"Project doesnt exist... yet!",false
 kinsta,kinsta.com,No Site For Domain,false
 webflow,webflow.com,404 Page Not Found,false
+intercom,intercom.io,Uh oh. That page doesn't exist.,false
+launchrock,launchrock.com,It looks like you may have taken a wrong turn somewhere,false
+pantheon,pantheon.io,404 error unknown site,false
+strikingly,strikinglydns.com,page not found,false
+uptimerobot,uptimerobot.com,page not found,false
