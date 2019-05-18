@@ -13,7 +13,6 @@ campaignmonitor,createsend.com,Double check the URL,false
 cargocollective,cargocollective.com,404 Not Found,false
 amazonaws,amazonaws.com,NoSuchBucket,false
 amazonaws,amazonaws.com,The specified bucket does not exist,false
-cloudfront,cloudfront.net,The request could not be satisfied,false
 smartling,smartling.com,Domain is not configured,false
 acquia,acquia.com,If you are an Acquia Cloud customer and expect to see your site at this address,false
 fastly,fastly.net,Please check that this domain has been added to a service,false
@@ -35,7 +34,6 @@ jetbrains,myjetbrains.com,is not a registered InCloud YouTrack,false
 azure,azurewebsites.net,404 Web Site not found,false
 readme,readme.io,"Project doesnt exist... yet!",false
 kinsta,kinsta.com,No Site For Domain,false
-webflow,webflow.com,404 Page Not Found,false
 intercom,intercom.io,Uh oh. That page doesn't exist.,false
 launchrock,launchrock.com,It looks like you may have taken a wrong turn somewhere,false
 pantheon,pantheon.io,404 error unknown site,false
