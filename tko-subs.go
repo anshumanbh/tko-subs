@@ -80,7 +80,6 @@ func main() {
 	flag.Parse()
 	dnsServer = *config.dnsServer
 	dnsPort = *config.dnsPort
-	log.Println(dnsServer, *config.dnsServer)
 
 	cmsRecords := loadProviders(*config.recordsFilePath)
 	var allResults []DomainScan
