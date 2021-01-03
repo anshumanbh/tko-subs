@@ -136,7 +136,7 @@ func panicOnError(e error) {
 	}
 }
 
-//showUsageOnError function as a generic check for error when panic is too agressive
+//showUsageOnError function as a generic check for error when panic is too aggressive
 func showUsageOnError(e error) {
 	if e != nil {
 		fmt.Printf("Error: %s\n", e)
@@ -319,9 +319,9 @@ func resolves(domain string) (bool, error) {
 
 // getCnameForDomain function to lookup the last CNAME record of a domain
 //
-// For exmaple, if you have a DNS chain that looks like this:
+// For example, if you have a DNS chain that looks like this:
 // foo.example.com -> bar.example.com -> baz.example.com -> 1.2.3.4
-// getCnameForDomain will retrun baz.example.com
+// getCnameForDomain will return baz.example.com
 // Doing CNAME lookups using GOLANG's net package or for that matter just doing a host on a domain
 // does not necessarily let us know about any dead DNS records. So, we need to read the raw DNS response
 // to properly figure out if there are any dead DNS records
